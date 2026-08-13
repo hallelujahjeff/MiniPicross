@@ -1,0 +1,403 @@
+/* 设计基调：乳白象牙体素造型 + 深中性灰背景，HUD 克制不抢戏 */
+:root {
+  --ivory-1: #f3ede1;
+  --ivory-2: #e6dccb;
+  --bg-1: #22252a;
+  --bg-2: #2c3037;
+  --bg-0: #1a1c20;
+  --text-1: #f5f5f2;
+  --text-2: #a8aeb8;
+  --accent: #4a9eff;
+  --danger: #e5484d;
+  --font-ui:
+    "Nunito", "Segoe UI", system-ui, -apple-system, "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-1);
+  color: var(--text-1);
+  font-family: var(--font-ui);
+}
+
+/* HUD 容器本身不拦截指针事件，只有面板内部可交互 */
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.hud-panel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 216px;
+  padding: 14px 16px 12px;
+  box-sizing: border-box;
+  pointer-events: auto;
+  border-radius: 14px;
+  background: rgba(26, 28, 32, 0.62);
+  border: 1px solid rgba(243, 237, 225, 0.12);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  user-select: none;
+}
+
+.hud-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ivory-1);
+  margin-bottom: 10px;
+}
+
+.hud-select {
+  width: 100%;
+  padding: 7px 9px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-1);
+  background: rgba(44, 48, 55, 0.9);
+  border: 1px solid rgba(243, 237, 225, 0.16);
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+
+.hud-select:hover {
+  border-color: rgba(74, 158, 255, 0.6);
+  background: rgba(52, 57, 66, 0.95);
+}
+
+.hud-select:focus-visible {
+  border-color: var(--accent);
+}
+
+.hud-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 9px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: color 0.16s ease;
+}
+
+.hud-check:hover {
+  color: var(--ivory-2);
+}
+
+.hud-check input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* 按钮：与下拉框同一套语言 */
+.hud-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 9px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-1);
+  background: rgba(74, 158, 255, 0.16);
+  border: 1px solid rgba(74, 158, 255, 0.45);
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    transform 0.08s ease;
+}
+
+.hud-btn:hover {
+  background: rgba(74, 158, 255, 0.28);
+  border-color: var(--accent);
+}
+
+.hud-btn:active {
+  transform: translateY(1px);
+}
+
+.hud-btn-inline {
+  width: auto;
+  margin: 0;
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+/* 通关进度条 */
+.hud-progress {
+  position: relative;
+  height: 5px;
+  margin-top: 11px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: rgba(243, 237, 225, 0.12);
+}
+
+.hud-progress i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #4a9eff, #7fc4ff);
+  transition: width 0.18s ease;
+}
+
+.hud-progress i.is-done {
+  background: linear-gradient(90deg, #4ad991, #9df0c4);
+}
+
+/* 谜面校验结论 */
+.hud-verdict {
+  margin-top: 10px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+  background: rgba(243, 237, 225, 0.06);
+  border: 1px solid rgba(243, 237, 225, 0.08);
+  cursor: help;
+}
+
+.hud-verdict.is-ok {
+  color: #9df0c4;
+  background: rgba(74, 217, 145, 0.1);
+  border-color: rgba(74, 217, 145, 0.28);
+}
+
+.hud-verdict.is-warn {
+  color: #ffc9a3;
+  background: rgba(229, 72, 77, 0.12);
+  border-color: rgba(229, 72, 77, 0.35);
+}
+
+.hud-toggles {
+  margin-top: 4px;
+}
+
+.hud-hint {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(243, 237, 225, 0.1);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.hud-hint b {
+  color: var(--ivory-2);
+  font-weight: 600;
+}
+
+/* 底部截面条：只在截面模式下出现 */
+.slice-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translate(-50%, 14px);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 12px 9px 16px;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  border-radius: 12px;
+  background: rgba(26, 28, 32, 0.72);
+  border: 1px solid rgba(74, 158, 255, 0.35);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    visibility 0.18s;
+  user-select: none;
+}
+
+.slice-bar.is-visible {
+  pointer-events: auto;
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+.slice-bar-text {
+  font-size: 12.5px;
+  color: var(--ivory-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 通关演出：顶部模型名 */
+.victory-top {
+  position: absolute;
+  left: 50%;
+  top: 34px;
+  transform: translate(-50%, -18px);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  text-align: center;
+  transition:
+    opacity 0.45s ease,
+    transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0.45s;
+}
+
+.victory-top.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+.victory-top h1 {
+  margin: 0;
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--ivory-1);
+  text-shadow:
+    0 2px 18px rgba(0, 0, 0, 0.55),
+    0 0 44px rgba(255, 233, 190, 0.28);
+}
+
+.victory-top p {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  letter-spacing: 0.1em;
+  color: #9df0c4;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+}
+
+/* 通关演出：底部冷知识 */
+.victory-bottom {
+  position: absolute;
+  left: 50%;
+  bottom: 30px;
+  transform: translate(-50%, 18px);
+  width: min(680px, calc(100% - 56px));
+  box-sizing: border-box;
+  padding: 15px 20px 16px;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  text-align: center;
+  border-radius: 14px;
+  background: rgba(26, 28, 32, 0.74);
+  border: 1px solid rgba(243, 237, 225, 0.14);
+  backdrop-filter: blur(16px) saturate(125%);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+  transition:
+    opacity 0.45s ease 0.15s,
+    transform 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.15s,
+    visibility 0.45s;
+}
+
+.victory-bottom.is-visible {
+  pointer-events: auto;
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+.victory-trivia-label {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 2px 9px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: #ffe9a8;
+  border: 1px solid rgba(255, 233, 168, 0.4);
+  border-radius: 999px;
+}
+
+.victory-bottom p {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  line-height: 1.85;
+  text-align: left;
+  color: var(--ivory-2);
+}
+
+.victory-bottom p.is-empty {
+  text-align: center;
+  color: var(--text-2);
+}
+
+/* 演出期间操作面板退到后面，不抢画面 */
+.hud-panel.is-dimmed {
+  opacity: 0.16;
+  transition: opacity 0.4s ease;
+}
+
+.hud-stats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hud-stats dt {
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.hud-stats dd {
+  margin: 0;
+  text-align: right;
+  color: var(--ivory-2);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.fatal-overlay {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: min(720px, 86vw);
+  max-height: 70vh;
+  overflow: auto;
+  padding: 20px 24px;
+  z-index: 100;
+  border-radius: 12px;
+  background: rgba(26, 28, 32, 0.94);
+  border: 1px solid var(--danger);
+  color: var(--text-1);
+  font-size: 13px;
+}
+
+.fatal-overlay pre {
+  margin: 10px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-2);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+}

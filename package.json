@@ -1,0 +1,22 @@
+{
+  "name": "picross3d",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "audit:levels": "node tools/level-audit.mjs",
+    "audit:levels:fix": "node tools/level-audit.mjs --fix",
+    "prune:levels": "node tools/level-audit.mjs --prune",
+    "test:generator": "node tools/level-audit.mjs --gen 40",
+    "test:repair": "node tools/level-audit.mjs --repair 36"
+  },
+  "dependencies": {
+    "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}

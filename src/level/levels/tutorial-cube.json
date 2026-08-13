@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "id": "tutorial-cube",
+  "name": "教学：小方块",
+  "size": [3,3,3],
+  "encoding": "layers",
+  "layers": [
+    ["##.","##.","..."],
+    ["##.","##.","..."],
+    ["...","...","..."]
+  ],
+  "palette": ["#7fc4ff"],
+  "trivia": "《立体绘图方块》2009 年在 NDS 上首发，日文名『立体ピクロス』。它只用两种记号就把二维数织的推理搬进了三维：圆圈表示这一行分成两段，方框表示分成三段或更多。",
+  "meta": {
+    "author": "builtin",
+    "difficulty": 2,
+    "order": 1,
+    "audit": {
+      "verdict": "solvable",
+      "score": 1.72,
+      "hiddenHints": 13,
+      "shownHints": 14
+    }
+  },
+  "hiddenHints": {
+    "x": [0,1],
+    "y": [0,2,3,4,5,6,7,8],
+    "z": [4,7,8]
+  }
+}

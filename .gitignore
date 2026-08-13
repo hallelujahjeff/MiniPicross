@@ -1,0 +1,19 @@
+# 依赖与构建产物
+node_modules/
+dist/
+
+# 日志（vite-dev.log / vite-err.log 等本地跑服务时产生的）
+*.log
+
+# 临时文件：验收脚本、提交信息草稿等（正式验收脚本在 tools/browser-check.js）
+tmp-*
+
+# 本地工具与 IDE 的会话状态，不属于工程资产
+.playwright-cli/
+.codebuddy/
+.vscode/
+.idea/
+
+# 操作系统
+.DS_Store
+Thumbs.db
