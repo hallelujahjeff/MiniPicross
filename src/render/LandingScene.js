@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { createGrid, gridToWorld } from "../core/GridCoords.js";
 import { LANDING_MODELS, parseVoxels } from "./VoxelModels.js";
 
 /**
@@ -23,11 +22,28 @@ const BOX = new THREE.BoxGeometry(1, 1, 1);
 const SHATTER_DUR = 0.55;
 /** 重组阶段时长（秒） */
 const ASSEMBLE_DUR = 0.9;
-/** 重组时相邻体素的交错延迟（秒） */
-const STAGGER = 0.012;
-/** 碎片飞散的半径范围 */
-const SCATTER_MIN = 4;
-const SCATTER_MAX = 8;
+/**
+ * 重组时相邻体素的交错延迟（秒）
+ *
+ * 复杂模型有三四百个方块，若沿用固定 STAGGER，整段重组会拖到好几秒。
+ * 因此实际延迟按方块数动态压缩（见 _applyModel），这里只是上限。
+ */
+const STAGGER_MAX = 0.012;
+/** 整个重组阶段的交错总时长上限（秒）——保证大模型也不会拖沓 */
+const STAGGER_TOTAL = 0.85;
+
+/**
+ * 模型在画面里占的比例
+ *
+ * 布局是"标题在上、模型居中、按钮在下"，上下各被文字占掉约 20%，
+ * 中间留给模型的只有约 60%。所以这里取 0.5 而不是更大——
+ * 早先用 0.62 时，高个子模型（城堡、火箭）的顶和底会直接压到标题与按钮上。
+ */
+const FRAME_FILL = 0.5;
+/** 相机固定距离（不随模型变化，见 _fitGroup 的说明） */
+const CAM_DIST = 20;
+/** 模型缩放插值速度（每秒收敛比例） */
+const FIT_LERP = 5.0;
 
 const easeInCubic = (t) => t * t * t;
 /** easeOutBack：重组末尾轻微回弹，更有"拼合"的弹性 */
@@ -38,14 +54,21 @@ function easeOutBack(t) {
   return 1 + c3 * p * p * p + c1 * p * p;
 }
 
-/** 随机散布位置（以原点为球心，均匀方向） */
-function scatter(out) {
+/**
+ * 随机散布位置（以原点为球心，均匀方向）
+ *
+ * 半径按模型包围球缩放：小模型（兔子）散得近，大模型（城堡）散得远，
+ * 否则碎片要么飞不出模型轮廓、要么冲出画面。
+ * @param {THREE.Vector3} out
+ * @param {number} radius 模型包围球半径
+ */
+function scatter(out, radius) {
   const theta = Math.random() * Math.PI * 2;
   const phi = Math.acos(2 * Math.random() - 1);
-  const r = SCATTER_MIN + Math.random() * (SCATTER_MAX - SCATTER_MIN);
+  const r = radius * (1.25 + Math.random() * 0.95);
   out.set(
     r * Math.sin(phi) * Math.cos(theta),
-    r * Math.sin(phi) * Math.sin(theta) * 0.7 + 1.5,
+    r * Math.sin(phi) * Math.sin(theta) * 0.7,
     r * Math.cos(phi),
   );
 }
@@ -95,23 +118,70 @@ export class LandingScene {
 
   _initScene() {
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-    this.camera.position.set(0, 0, 14);
+    this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
+    this.camera.position.set(0, 0, CAM_DIST);
     this.camera.lookAt(0, 0, 0);
 
-    /** 体素组：整体自转 */
+    /** 模型包围球半径（局部单位，驱动碎片散射距离） */
+    this._radius = 6;
+    /** 模型实际体素范围 [ex, ey, ez]（驱动取景） */
+    this._extent = [7, 9, 5];
+    /** 当前 / 目标缩放（换模型时平滑过渡） */
+    this._fit = 1;
+    this._fitTarget = 1;
+
+    /** 体素组：整体自转 + 统一缩放 */
     this.group = new THREE.Group();
+    // 初始给一个 3/4 视角：正对时体素模型会退化成一片"剪影"，认不出造型
+    this.group.rotation.y = -0.62;
     this.scene.add(this.group);
 
-    /** 不可见的命中球（点击检测用） */
+    /**
+     * 不可见的命中球（点击检测用）
+     * 半径随模型变化，见 _applyModel —— 否则小模型要点很偏、大模型点不到边角。
+     */
     this.hitSphere = new THREE.Mesh(
-      new THREE.SphereGeometry(5.2, 12, 12),
+      new THREE.SphereGeometry(1, 16, 12),
       new THREE.MeshBasicMaterial({ visible: false }),
     );
     this.group.add(this.hitSphere);
 
     this._raycaster = new THREE.Raycaster();
     this._pointer = new THREE.Vector2();
+  }
+
+  /**
+   * 自动取景：**缩放模型组**而不是移动相机
+   *
+   * 原来相机距离硬编码 14，模型一大就出画（兔子包围球半径 6.2，
+   * 而 14 距离在 42° 竖直视野下只能容纳 5.4）。
+   *
+   * 修法上有两个选择，这里选了"缩放模型"：
+   *  - 移动相机：不同模型的相机距离会从 28 变到 50，于是固定在世界坐标里的
+   *    粒子云和地面网格相对模型忽大忽小，构图完全失控。
+   *  - 缩放模型：相机、粒子、网格全都不动，**每个模型呈现的视觉大小完全一致**，
+   *    构图稳定。碎片散射写在组局部空间里，缩放会一起生效，无需额外处理。
+   *
+   * ## 为什么不用包围球
+   * 最初用"包围球半径"拟合，结果扁平模型（飞机 15×5×13）被那颗大球撑开，
+   * 画面上反而显得很小——球的半径由最长的对角线决定，而飞机根本填不满球。
+   * 改成**分别约束水平与竖直**：
+   *  - 水平：模型绕 Y 自转，最坏情况的水平投影宽度是 XZ 平面的对角线 hypot(ex, ez)
+   *  - 竖直：高度 ey（X 轴只有很小的固定倾角，已由 FRAME_FILL 的余量吸收）
+   * 两个方向各算一个允许缩放，取较小者。这样宽扁的飞机会撑满宽度，
+   * 高瘦的火箭会撑满高度，每个模型都用足画面。
+   */
+  _fitGroup() {
+    const vFov = (this.camera.fov * Math.PI) / 180;
+    const visibleH = 2 * CAM_DIST * Math.tan(vFov / 2);
+    const visibleW = visibleH * this.camera.aspect;
+
+    const [ex, ey, ez] = this._extent;
+    const horizSpan = Math.hypot(ex, ez); // 自转一圈里最宽的投影
+    const fitH = (visibleW * FRAME_FILL) / Math.max(0.001, horizSpan);
+    const fitV = (visibleH * FRAME_FILL) / Math.max(0.001, ey);
+    this._fitTarget = Math.min(fitH, fitV);
+    this.camera.updateProjectionMatrix();
   }
 
   _buildLights() {
@@ -215,22 +285,51 @@ export class LandingScene {
     const h = this.container.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
+    // 视野变了要重新取景：窄屏时水平方向会成为新的瓶颈
+    this._fitGroup();
   }
 
   /* ===================== 模型切换 ===================== */
 
   _applyModel(idx, immediate) {
     const model = LANDING_MODELS[idx];
-    const grid = createGrid(model.size);
     const voxels = parseVoxels(model);
-    this._grid = grid;
+    if (voxels.length === 0) return;
+
+    // 按**实际体素范围**（而不是声明的 size）算中心与尺寸：
+    // 造型经常填不满声明的网格（飞机的机身只占中间几层），用 size 居中会偏，
+    // 用 size 取景会偏小。
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (const v of voxels) {
+      if (v.x < minX) minX = v.x;
+      if (v.y < minY) minY = v.y;
+      if (v.z < minZ) minZ = v.z;
+      if (v.x > maxX) maxX = v.x;
+      if (v.y > maxY) maxY = v.y;
+      if (v.z > maxZ) maxZ = v.z;
+    }
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const cz = (minZ + maxZ) / 2;
+    const extent = [maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1];
+    const radius = Math.hypot(extent[0], extent[1], extent[2]) / 2;
+
+    // 旧模型飞散时用较大的半径，避免碎片突然改变散布尺度
+    const scatterRadius = Math.max(this._radius, radius);
+    this._radius = radius;
+    this._extent = extent;
+    this.hitSphere.scale.setScalar(radius * 0.9);
+    this._fitGroup();
+
+    // 交错延迟：方块多时按总时长上限压缩，保证大模型不拖沓
+    const stagger = Math.min(STAGGER_MAX, STAGGER_TOTAL / Math.max(1, voxels.length));
 
     // 旧活跃体素 → 飞散
     if (!immediate) {
       for (const a of this.activeAnims) {
         a.from.copy(a.pos);
-        scatter(a.to);
+        scatter(a.to, scatterRadius);
         a.scaleFrom = a.scale;
         a.scaleTo = 0;
         a.rotFrom = 0;
@@ -262,32 +361,49 @@ export class LandingScene {
         rotFrom: (Math.random() * 2 - 1) * 6,
         rotTo: 0,
         dur: ASSEMBLE_DUR,
-        delay: i * STAGGER,
-        t: immediate ? Infinity : -i * STAGGER,
+        delay: i * stagger,
+        // 旧方块要先飞散，新方块整体推迟一个碎裂时长再开始拼合
+        t: immediate ? Infinity : -(SHATTER_DUR * 0.55 + i * stagger),
         ease: easeOutBack,
         colorIdx: v.c,
       };
-      scatter(anim.from);
-      gridToWorld(grid, v.x, v.y, v.z, anim.to);
+      scatter(anim.from, radius);
+      // 用实际内容中心对齐到原点（不是网格中心）
+      anim.to.set(v.x - cx, v.y - cy, v.z - cz);
       if (immediate) {
         anim.pos.copy(anim.to);
         anim.scale = 1;
       }
+      randomAxis(anim.axis);
       // 写颜色
       this._color.set(palette[v.c] ?? palette[0]);
       this.solid.setColorAt(slot, this._color);
       return anim;
     });
 
+    if (this.solid.instanceColor) this.solid.instanceColor.needsUpdate = true;
+
+    // 回收已播完的动画项：每次 morph 都 push 新项，若不清理，长时间停在首页
+    // 会让 anims 无限增长（每轮 5 个模型约 +1100 项），_update 的遍历成本
+    // 随之线性上升。已经 !active 的项不再参与任何计算，可以直接丢掉。
+    this.anims = this.anims.filter((a) => a.active);
+    this.anims.push(...newAnims);
+    this.activeAnims = newAnims;
+
     if (immediate) {
       // 直接写矩阵
       for (const a of newAnims) this._writeMatrix(a);
       this.solid.instanceMatrix.needsUpdate = true;
       this.wire.instanceMatrix.needsUpdate = true;
+      // 首帧不做过渡，缩放直接落到目标值
+      this._fit = this._fitTarget;
+      this.group.scale.setScalar(this._fit);
     }
 
-    this.anims.push(...newAnims);
-    this.activeAnims = newAnims;
+    /** 本次重组的总时长（含交错），morph 冷却用 */
+    this._morphDuration =
+      SHATTER_DUR * 0.55 + voxels.length * stagger + ASSEMBLE_DUR + 0.15;
+
     this.solid.count = this.capacity;
     this.wire.count = this.capacity;
   }
@@ -299,10 +415,13 @@ export class LandingScene {
     this.modelIndex = (this.modelIndex + 1) % LANDING_MODELS.length;
     this._applyModel(this.modelIndex, false);
     this.onMorph?.(this.modelIndex, LANDING_MODELS[this.modelIndex].name);
-    // 等重组动画结束才允许再次点击
-    setTimeout(() => {
-      this._morphing = false;
-    }, (ASSEMBLE_DUR + SHATTER_DUR + this.activeAnims.length * STAGGER + 0.2) * 1000);
+    // 等重组动画结束才允许再次点击（时长由 _applyModel 按方块数算出）
+    setTimeout(
+      () => {
+        this._morphing = false;
+      },
+      (this._morphDuration ?? 1.6) * 1000,
+    );
   }
 
   /* ===================== 交互 ===================== */
@@ -361,12 +480,18 @@ export class LandingScene {
     this._raf = requestAnimationFrame(this._animate);
     const dt = Math.min(0.05, this._clock.getDelta());
 
-    // 整体缓慢自转
-    this.group.rotation.y += dt * 0.35;
-    this.group.rotation.x = Math.sin(performance.now() * 0.0004) * 0.12;
+    // 整体缓慢自转；X 轴恒定偏一点，让顶面始终可见（纯水平视角会显得很扁）
+    this.group.rotation.y += dt * 0.32;
+    this.group.rotation.x = 0.16 + Math.sin(performance.now() * 0.0004) * 0.07;
 
     // 粒子缓缓旋转
     this.particles.rotation.y -= dt * 0.02;
+
+    // 缩放平滑逼近目标（不同模型尺寸差别大，硬切会很突兀）
+    if (Math.abs(this._fit - this._fitTarget) > 0.0005) {
+      this._fit += (this._fitTarget - this._fit) * Math.min(1, dt * FIT_LERP);
+      this.group.scale.setScalar(this._fit);
+    }
 
     this._update(dt);
     this.renderer.render(this.scene, this.camera);

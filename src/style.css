@@ -801,7 +801,13 @@ body {
   display: block;
 }
 
-/* 标题层：pointer-events 放行，让点击穿透到画布触发碎裂 */
+/**
+ * 覆盖层：标题在上、模型居中、按钮在下
+ *
+ * 早先把标题和按钮一起垂直居中，结果文字正压在模型上，两者互相干扰。
+ * 改成上下分置，中间那片区域留给 3D 模型，构图才立得住。
+ * 整层 pointer-events: none，让点击穿透到画布触发碎裂，只有按钮放行。
+ */
 .landing-inner {
   position: absolute;
   inset: 0;
@@ -809,15 +815,22 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   pointer-events: none;
   text-align: center;
-  padding: 0 24px;
+  padding: clamp(30px, 7vh, 64px) 24px clamp(26px, 5vh, 46px);
+}
+
+.landing-head,
+.landing-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .landing-title {
   margin: 0;
-  font-size: clamp(38px, 7vw, 68px);
+  font-size: clamp(34px, 6vw, 60px);
   font-weight: 800;
   letter-spacing: 0.14em;
   color: #f2f6ff;
@@ -828,8 +841,8 @@ body {
 }
 
 .landing-sub {
-  margin: 14px 0 0;
-  font-size: 15px;
+  margin: 12px 0 0;
+  font-size: 14px;
   letter-spacing: 0.5em;
   text-indent: 0.5em;
   color: rgba(170, 200, 240, 0.75);
@@ -839,7 +852,6 @@ body {
 /* 进入按钮：霓虹描边 + 扫光 */
 .landing-enter {
   position: relative;
-  margin-top: 42px;
   padding: 15px 54px;
   font-family: inherit;
   font-size: 17px;
@@ -905,11 +917,7 @@ body {
 }
 
 .landing-hint {
-  position: absolute;
-  bottom: 34px;
-  left: 50%;
-  transform: translateX(-50%);
-  margin: 0;
+  margin: 18px 0 0;
   font-size: 12.5px;
   letter-spacing: 0.14em;
   color: rgba(150, 180, 215, 0.6);
