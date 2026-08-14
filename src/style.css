@@ -349,9 +349,52 @@ body {
 }
 
 /* 演出期间操作面板退到后面，不抢画面 */
-.hud-panel.is-dimmed {
+.hud-panel.is-dimmed,
+.hud-help.is-dimmed {
   opacity: 0.16;
   transition: opacity 0.4s ease;
+}
+
+/* 左下操作说明：半透明小卡片，不抢戏 */
+.hud-help {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  padding: 10px 14px;
+  pointer-events: auto;
+  font-size: 11.5px;
+  line-height: 1.75;
+  color: var(--text-2);
+  border-radius: 12px;
+  background: rgba(26, 28, 32, 0.55);
+  border: 1px solid rgba(243, 237, 225, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: opacity 0.4s ease;
+  user-select: none;
+}
+
+.hud-help b {
+  color: var(--ivory-2);
+  font-weight: 600;
+}
+
+/* 回到选关界面：默认隐藏，通关后出现 */
+.hud-exit {
+  display: none;
+  margin-top: 12px;
+  background: rgba(74, 217, 145, 0.16);
+  border-color: rgba(74, 217, 145, 0.5);
+  color: #9df0c4;
+}
+
+.hud-exit:hover {
+  background: rgba(74, 217, 145, 0.28);
+  border-color: #4ad991;
+}
+
+.hud-exit.is-visible {
+  display: block;
 }
 
 .hud-stats {
@@ -400,4 +443,301 @@ body {
   color: var(--text-2);
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 12px;
+}
+
+/* ============================================================
+   选关界面：软木板剪贴画墙
+   ------------------------------------------------------------
+   主题：手作工坊。每凿出一个造型，就把它的剪贴画用 washi 胶带
+   斜贴在软木板上，攒满一面收藏墙。卡片故意歪斜、胶带颜色随机，
+   放弃规整网格，营造"手工贴上去"的错落感。
+   ============================================================ */
+
+.level-select {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  overflow-y: auto;
+  overflow-x: hidden;
+  color: #4a3b2a;
+  /* 软木板：暖木色底 + 两层稀疏颗粒径向渐变，模拟软木质感 */
+  background-color: #c79a67;
+  background-image:
+    radial-gradient(circle at 18% 24%, rgba(255, 250, 240, 0.10) 0 1.5px, transparent 3px),
+    radial-gradient(circle at 72% 58%, rgba(90, 55, 25, 0.10) 0 1.5px, transparent 3px),
+    radial-gradient(circle at 40% 80%, rgba(255, 250, 240, 0.07) 0 1px, transparent 2.5px),
+    radial-gradient(circle at 88% 12%, rgba(90, 55, 25, 0.08) 0 1px, transparent 2.5px);
+  background-size: 140px 140px, 180px 180px, 110px 110px, 160px 160px;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+.level-select.is-hidden {
+  opacity: 0;
+  transform: scale(1.02);
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* ---------- 顶栏 ---------- */
+.ls-head {
+  text-align: center;
+  padding: 34px 20px 8px;
+}
+
+.ls-title {
+  margin: 0;
+  font-size: clamp(30px, 5vw, 46px);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #43321f;
+  text-shadow:
+    0 1px 0 rgba(255, 250, 240, 0.35),
+    0 3px 10px rgba(90, 55, 25, 0.22);
+}
+
+.ls-sub {
+  margin: 8px 0 0;
+  font-size: 13.5px;
+  letter-spacing: 0.12em;
+  color: #6b5235;
+}
+
+.ls-progress {
+  display: inline-block;
+  margin: 16px 0 0;
+  padding: 5px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #5a4326;
+  background: rgba(255, 250, 240, 0.4);
+  border: 1px solid rgba(90, 55, 25, 0.18);
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* ---------- 瀑布流卡片墙 ---------- */
+.ls-wall {
+  columns: 3 230px;
+  column-gap: 30px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 26px 32px 64px;
+}
+
+.level-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px 16px;
+  margin-bottom: 30px;
+  break-inside: avoid;
+  font-family: inherit;
+  text-align: center;
+  cursor: pointer;
+  border: 1px solid rgba(90, 55, 25, 0.16);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fdf9ef 0%, #f5edda 100%);
+  box-shadow:
+    0 2px 3px rgba(90, 55, 25, 0.18),
+    0 8px 18px rgba(90, 55, 25, 0.16);
+  transform: rotate(var(--rot, 0deg));
+  transition:
+    transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1),
+    box-shadow 0.22s ease,
+    filter 0.22s ease;
+}
+
+.level-card:not(.is-locked):hover {
+  transform: rotate(0deg) translateY(-6px);
+  box-shadow:
+    0 3px 4px rgba(90, 55, 25, 0.2),
+    0 16px 32px rgba(90, 55, 25, 0.26);
+  z-index: 3;
+}
+
+.level-card:not(.is-locked):active {
+  transform: rotate(0deg) translateY(-2px);
+}
+
+/* washi 胶带：斜贴在卡片顶部 */
+.level-tape {
+  position: absolute;
+  top: -11px;
+  left: var(--tape-x, 40%);
+  width: 64px;
+  height: 24px;
+  background: var(--tape-color, rgba(242, 167, 179, 0.82));
+  transform: rotate(var(--tape-rot, -4deg));
+  clip-path: polygon(3% 0, 97% 7%, 100% 93%, 0 100%);
+  box-shadow: 0 1px 3px rgba(90, 55, 25, 0.18);
+  z-index: 4;
+  pointer-events: none;
+}
+
+/* 序号：像贴纸一样钉在左上角 */
+.level-index {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  min-width: 26px;
+  height: 26px;
+  line-height: 26px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: #e5484d;
+  border-radius: 999px;
+  box-shadow: 0 2px 5px rgba(90, 55, 25, 0.3);
+  z-index: 4;
+  transform: rotate(-8deg);
+  pointer-events: none;
+}
+
+/* 贴图区：正方形画框 */
+.level-thumb {
+  display: none;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  border-radius: 7px;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.7), transparent 60%),
+    #efe6d0;
+  box-shadow: inset 0 0 0 1px rgba(90, 55, 25, 0.1);
+  filter: drop-shadow(0 3px 5px rgba(90, 55, 25, 0.18));
+}
+
+/* 问号占位：未完成时显示 */
+.level-question {
+  display: flex;
+  width: 100%;
+  aspect-ratio: 1;
+  align-items: center;
+  justify-content: center;
+  font-family: Georgia, "Times New Roman", "STSong", serif;
+  font-style: italic;
+  font-size: 76px;
+  font-weight: 700;
+  color: #c9a06a;
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.55), transparent 55%),
+    #f0e6cf;
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 1px rgba(90, 55, 25, 0.1);
+  text-shadow: 0 2px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* 名称：完成后揭示 */
+.level-name {
+  display: none;
+  margin-top: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #43321f;
+}
+
+/* 星级 */
+.level-stars {
+  display: block;
+  margin-top: 9px;
+  font-size: 15px;
+  letter-spacing: 3px;
+  line-height: 1;
+}
+
+.level-stars-filled {
+  color: #f2b705;
+  text-shadow: 0 1px 0 rgba(90, 55, 25, 0.2);
+}
+
+.level-stars-empty {
+  color: #d9cdb4;
+}
+
+/* 锁：锁定态 */
+.level-lock {
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 40px;
+  z-index: 3;
+  filter: drop-shadow(0 3px 5px rgba(90, 55, 25, 0.35));
+}
+
+/* ---------- 状态切换 ---------- */
+.level-card.is-completed .level-question {
+  display: none;
+}
+/* 锁定卡片：保留正方形底纸作为占位，只把问号字变成透明，锁盖在中央 */
+.level-card.is-locked .level-question {
+  color: transparent;
+  background: #e0d4ba;
+  box-shadow: inset 0 0 0 1px rgba(90, 55, 25, 0.14);
+}
+.level-card.is-completed .level-thumb,
+.level-card.is-completed .level-name {
+  display: block;
+}
+.level-card.is-locked {
+  cursor: not-allowed;
+  filter: grayscale(0.55) brightness(0.94);
+}
+.level-card.is-locked .level-lock {
+  display: block;
+}
+.level-card.is-locked .level-stars {
+  opacity: 0.45;
+}
+.level-card.is-broken {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* 完成关卡入场：贴图闪烁 */
+@keyframes thumb-flash {
+  0% {
+    filter: brightness(1) drop-shadow(0 0 0 rgba(255, 220, 130, 0));
+    transform: scale(1);
+  }
+  18% {
+    filter: brightness(1.9) saturate(1.4) drop-shadow(0 0 14px rgba(255, 220, 130, 0.8));
+    transform: scale(1.07);
+  }
+  42% {
+    filter: brightness(1.25) drop-shadow(0 0 6px rgba(255, 220, 130, 0.4));
+    transform: scale(1.03);
+  }
+  68% {
+    filter: brightness(1.7) drop-shadow(0 0 10px rgba(255, 220, 130, 0.6));
+    transform: scale(1.05);
+  }
+  100% {
+    filter: brightness(1) drop-shadow(0 0 0 rgba(255, 220, 130, 0));
+    transform: scale(1);
+  }
+}
+.level-card.just-completed .level-thumb {
+  animation: thumb-flash 1.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 760px) {
+  .ls-wall {
+    columns: 2 150px;
+    column-gap: 18px;
+    padding: 20px 18px 48px;
+  }
+  .level-question {
+    font-size: 52px;
+  }
 }

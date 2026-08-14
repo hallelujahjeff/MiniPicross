@@ -43,12 +43,24 @@ const parsedCache = new Map();
 
 /**
  * 关卡清单（已按 meta.order 再按 id 排序）
- * @returns {{id:string,name:string,error:Error|null}[]}
+ *
+ * `difficulty` 是 1..5 的整数星级（来自 `meta.difficulty`，由
+ * `npm run prune:levels` 在裁剪时按难度模型写入），选关界面用它画星星。
+ * 这里只读 `raw.meta` 而不完整解析关卡，避免为拿一个星级去跑完整 parse。
+ *
+ * @returns {{id:string,name:string,error:Error|null,difficulty:number}[]}
  */
 export function listLevels() {
   return [...registry.values()]
     .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
-    .map((e) => ({ id: e.id, name: e.name, error: e.error }));
+    .map((e) => ({
+      id: e.id,
+      name: e.name,
+      error: e.error,
+      difficulty: Number.isFinite(e.raw?.meta?.difficulty)
+        ? Math.min(5, Math.max(1, Math.round(e.raw.meta.difficulty)))
+        : 1,
+    }));
 }
 
 /** 默认关卡 id（清单里第一个可用的） */

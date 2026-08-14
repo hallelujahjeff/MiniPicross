@@ -21,7 +21,6 @@ import { analyzePuzzle } from "./puzzle/PuzzleSolver.js";
 import {
   listLevels,
   loadLevel as loadLevelData,
-  getDefaultLevelId,
   validateAllLevels,
 } from "./level/LevelLoader.js";
 import { GameHud } from "./ui/GameHud.js";
@@ -122,6 +121,12 @@ export class App {
     this._loadToken = 0;
     /** 通关演出中：禁用玩法输入与轨道控制 */
     this.victory = false;
+    /** 通关回调（由外部协调层设置）：完成一关时通知 */
+    this.onLevelSolved = null;
+    /** 退出回调（由外部协调层设置）：点"回到选关界面"时调用 */
+    this.onExitLevel = null;
+    /** 关卡是否正在展示（由外部协调层控制渲染循环启停） */
+    this._visible = false;
 
     this._tmpVec = new THREE.Vector3();
     this._statsTimer = 0;
@@ -170,18 +175,13 @@ export class App {
     const mount = document.querySelector("#hud") ?? document.body;
     this.hud = new GameHud({
       mount,
-      levels,
-      onSelect: (id) => {
-        this.loadLevel(id).catch((err) => console.error(err));
-      },
-      onToggleReveal: (flag) => this.setReveal(flag),
-      onToggleHints: (flag) => this.hintRenderer.setEnabled(flag),
-      onToggleSound: (flag) => this.sound.setMuted(!flag),
       onResetSlice: () => this.resetSlice(),
       onDismissVictory: () => this.endVictory(),
+      onExit: () => this.onExitLevel?.(this.currentLevelId),
     });
 
-    await this.loadLevel(PARAMS.get("level") ?? getDefaultLevelId());
+    // 不再自动加载关卡：初始入口是选关界面，由外部协调层调用 enterLevel。
+    // ?level=id 仅作为调试直达入口（外部协调层会处理）。
     return this;
   }
 
@@ -206,7 +206,7 @@ export class App {
     try {
       level = loadLevelData(id);
     } catch (err) {
-      this.hud?.setError(err.message);
+      console.error(`[App] 关卡 ${id} 加载失败：${err.message}`);
       // 旧造型此刻已被淡出缩到接近 0，若不复位画面会像黑屏
       this.puzzleRenderer.group.scale.setScalar(1);
       throw err;
@@ -255,9 +255,7 @@ export class App {
     if (this.reveal) this._applyReveal();
 
     this.currentLevelId = id;
-    this.hud?.setCurrent(id);
     this.hud?.setSlice(this.slice);
-    this.hud?.setAnalysis(this.analysis);
     this._refreshStats();
 
     if (DEBUG) {
@@ -374,7 +372,6 @@ export class App {
    */
   setReveal(flag) {
     this.reveal = flag;
-    this.hud?.setReveal(flag);
     if (!this.puzzle) return;
 
     if (flag) {
@@ -403,6 +400,8 @@ export class App {
    */
   _onSolved() {
     this.victory = true;
+    // 立即记录进度（不等演出），外部协调层据此解锁下一关
+    this.onLevelSolved?.(this.currentLevelId);
 
     // 演出要看完整造型，先把截面复位
     if (this.slice?.reset()) {
@@ -635,6 +634,20 @@ export class App {
     this.renderer.setSize(width, height);
   }
 
+  /** 展示关卡：重新测量尺寸 + 开始渲染循环（选关界面切换到关卡界面时调用） */
+  show() {
+    this._visible = true;
+    // 从 display:none 恢复后尺寸可能还是 0，先同步一次测量
+    this._onResize();
+    this.start();
+  }
+
+  /** 隐藏关卡：停止渲染循环（回到选关界面时调用） */
+  hide() {
+    this._visible = false;
+    this.stop();
+  }
+
   start() {
     if (this._running) return;
     this._running = true;
@@ -669,8 +682,6 @@ export class App {
       this.sliceHandles.update(this.camera);
       this.interaction.update();
     }
-    this.hud?.tick(delta);
-
     // draw call / 碎片数这类统计会随动画变化，按低频刷新即可
     this._statsTimer += delta;
     if (this._statsTimer >= 0.35) {
