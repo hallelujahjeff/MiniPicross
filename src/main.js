@@ -4,6 +4,7 @@ import { LevelSelect } from "./ui/LevelSelect.js";
 import { listLevels } from "./level/LevelLoader.js";
 import { getCompletedLevels, markLevelCompleted } from "./ui/ProgressStore.js";
 import { BgmPlayer } from "./audio/BgmPlayer.js";
+import { LandingScene } from "./render/LandingScene.js";
 
 /** 取不到挂载点时兜底创建，避免内嵌预览环境下容器缺失导致白屏 */
 function ensureContainer(selector, id) {
@@ -28,9 +29,17 @@ function showFatal(message) {
 const container = ensureContainer("#app", "app");
 ensureContainer("#hud", "hud");
 const selectMount = ensureContainer("#select", "select");
+const landingMount = ensureContainer("#landing", "landing");
 
 const app = new App(container);
 const bgm = new BgmPlayer();
+
+// ---------- 首页（体素雕塑） ----------
+const landing = new LandingScene(landingMount, {
+  onMorph: (index, name) => {
+    // 碎裂重组时给一点视觉反馈（此处仅记录，避免过度设计）
+  },
+});
 
 // ---------- 选关界面 ----------
 const levelSelect = new LevelSelect(selectMount, {
@@ -43,22 +52,34 @@ function refreshSelect(flashId) {
   levelSelect.setCompleted(getCompletedLevels(), flashId);
 }
 
-/** 当前场景："select" = 选关界面，"level" = 关卡内 */
-let scene = "select";
+/** 当前场景："landing" = 首页，"select" = 选关界面，"level" = 关卡内 */
+let scene = "landing";
 /** 用户是否已经有过一次手势（BGM 是否已解锁开播） */
 let bgmUnlocked = false;
 
 /** 播放当前场景对应的 BGM */
 function playSceneBgm() {
   if (!bgmUnlocked) return;
-  if (scene === "select") bgm.playSelect();
-  else bgm.playLevel();
+  // 首页与选关界面共用舒缓组「微光」；关卡内切到轻快组
+  if (scene === "level") bgm.playLevel();
+  else bgm.playSelect();
+}
+
+/** 从首页进入选关界面 */
+function enterSelect() {
+  scene = "select";
+  // 点"进入"按钮本身就是一个用户手势，直接解锁 BGM
+  bgmUnlocked = true;
+  bgm.unlock();
+  bgm.playSelect();
+
+  landingMount.classList.add("is-hidden");
+  levelSelect.show();
 }
 
 /** 从选关界面进入关卡 */
 function enterLevel(id) {
   scene = "level";
-  // 点卡片本身就是一个用户手势，直接解锁并切到关卡 BGM
   bgmUnlocked = true;
   bgm.unlock();
   bgm.playLevel();
@@ -113,25 +134,33 @@ app.onLevelSolved = (id) => {
 // 点"回到选关界面"回调
 app.onExitLevel = () => exitToSelect();
 
+// "进入游戏"按钮 → 首页隐藏，进入选关界面
+document.getElementById("enterBtn")?.addEventListener("click", enterSelect);
+
 // 用 async IIFE 而非顶层 await，避免对构建目标的额外要求
 (async () => {
   try {
     await app.init();
 
-    // 初始状态：选关界面（3D 暂不渲染）
+    // 初始状态：首页展示（体素雕塑），游戏 3D 与选关界面暂隐藏
     container.style.display = "none";
+    levelSelect.hide();
     refreshSelect();
-    levelSelect.show();
 
-    // 调试直达：?level=id 直接进入某关（跳过选关）
+    // 调试直达：?level=id 直接进入某关（跳过首页与选关）
     const levelParam = new URLSearchParams(window.location.search).get("level");
-    if (levelParam) enterLevel(levelParam);
+    if (levelParam) {
+      landingMount.classList.add("is-hidden");
+      enterLevel(levelParam);
+    }
 
     // 开发期暴露实例，便于控制台调试与自动化验收（生产构建不包含）
     if (import.meta.env?.DEV) {
       window.__picross = app;
       window.__select = levelSelect;
+      window.__landing = landing;
       window.__enterLevel = enterLevel;
+      window.__enterSelect = enterSelect;
       window.__exitToSelect = exitToSelect;
       window.__bgm = bgm;
     }
@@ -146,6 +175,7 @@ if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     app.dispose();
     levelSelect.dispose();
+    landing.dispose();
     bgm.dispose();
   });
 }

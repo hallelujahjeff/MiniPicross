@@ -762,3 +762,168 @@ body {
     font-size: 52px;
   }
 }
+
+/* ============================================================
+   首页（Landing）：体素雕塑展
+   ------------------------------------------------------------
+   主题：进入游戏前的一件"动态体素雕塑"。深空蓝黑背景上，一个
+   半透明体素模型裹着淡蓝线框缓缓旋转；点击它会碎裂、再重组成
+   另一个模型。视觉往"科技感 / 数字雕塑"方向走，和游戏内的
+   暖木工坊氛围形成反差，作为开场的"高光时刻"。
+   ============================================================ */
+
+#landing {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(63, 105, 160, 0.22), transparent 55%),
+    radial-gradient(circle at 18% 12%, rgba(99, 215, 232, 0.08), transparent 40%),
+    radial-gradient(circle at 84% 86%, rgba(111, 155, 255, 0.1), transparent 45%),
+    #0d1117;
+  transition:
+    opacity 0.55s ease,
+    visibility 0.55s,
+    transform 0.55s ease;
+}
+
+#landing.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: scale(1.04);
+}
+
+.landing-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+/* 标题层：pointer-events 放行，让点击穿透到画布触发碎裂 */
+.landing-inner {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  text-align: center;
+  padding: 0 24px;
+}
+
+.landing-title {
+  margin: 0;
+  font-size: clamp(38px, 7vw, 68px);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #f2f6ff;
+  text-shadow:
+    0 0 18px rgba(120, 180, 255, 0.55),
+    0 0 46px rgba(99, 215, 232, 0.35),
+    0 3px 24px rgba(0, 0, 0, 0.6);
+}
+
+.landing-sub {
+  margin: 14px 0 0;
+  font-size: 15px;
+  letter-spacing: 0.5em;
+  text-indent: 0.5em;
+  color: rgba(170, 200, 240, 0.75);
+  text-shadow: 0 0 12px rgba(99, 215, 232, 0.4);
+}
+
+/* 进入按钮：霓虹描边 + 扫光 */
+.landing-enter {
+  position: relative;
+  margin-top: 42px;
+  padding: 15px 54px;
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: #eaf4ff;
+  background: rgba(20, 30, 48, 0.55);
+  border: 1px solid rgba(120, 180, 255, 0.65);
+  border-radius: 999px;
+  cursor: pointer;
+  pointer-events: auto;
+  overflow: hidden;
+  transition:
+    transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1),
+    box-shadow 0.25s ease,
+    border-color 0.25s ease,
+    background 0.25s ease;
+  box-shadow:
+    0 0 18px rgba(99, 215, 232, 0.25),
+    inset 0 0 18px rgba(99, 215, 232, 0.12);
+}
+
+.landing-enter:hover {
+  transform: translateY(-3px);
+  border-color: #8fd0ff;
+  background: rgba(30, 48, 76, 0.7);
+  box-shadow:
+    0 0 34px rgba(99, 215, 232, 0.5),
+    inset 0 0 22px rgba(99, 215, 232, 0.2);
+}
+
+.landing-enter:active {
+  transform: translateY(-1px);
+}
+
+/* 扫光动画：一道斜光周期性扫过按钮 */
+.landing-enter::after {
+  content: "";
+  position: absolute;
+  top: -20%;
+  left: -80%;
+  width: 50%;
+  height: 140%;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgba(255, 255, 255, 0.35),
+    transparent
+  );
+  transform: skewX(-20deg);
+  animation: enter-sweep 2.8s ease-in-out infinite;
+}
+
+@keyframes enter-sweep {
+  0%,
+  55% {
+    left: -80%;
+  }
+  85%,
+  100% {
+    left: 140%;
+  }
+}
+
+.landing-hint {
+  position: absolute;
+  bottom: 34px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  font-size: 12.5px;
+  letter-spacing: 0.14em;
+  color: rgba(150, 180, 215, 0.6);
+  text-shadow: 0 0 10px rgba(99, 215, 232, 0.3);
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .landing-enter {
+    padding: 13px 40px;
+    font-size: 15px;
+  }
+  .landing-sub {
+    letter-spacing: 0.32em;
+    text-indent: 0.32em;
+  }
+}
