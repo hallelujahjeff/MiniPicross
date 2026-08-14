@@ -148,10 +148,16 @@ export class LevelSelect {
       name.textContent = lv.name;
       card.appendChild(name);
 
-      // 锁
+      // 锁：扁平 SVG 图标（挂锁形状，不用 emoji），放在右下角角落，不挡问号
       const lock = document.createElement("span");
       lock.className = "level-lock";
-      lock.textContent = "🔒";
+      lock.innerHTML =
+        '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+        '<path class="lock-shackle" d="M7.5 10.5V7.5a4.5 4.5 0 0 1 9 0v3" />' +
+        '<rect class="lock-body" x="4.5" y="10.5" width="15" height="10" rx="3" />' +
+        '<circle class="lock-hole" cx="12" cy="14.6" r="1.4" />' +
+        '<rect class="lock-slot" x="11.2" y="15.4" width="1.6" height="2.8" rx="0.8" />' +
+        "</svg>";
       card.appendChild(lock);
 
       if (lv.error) {

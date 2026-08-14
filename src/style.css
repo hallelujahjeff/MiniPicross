@@ -662,27 +662,49 @@ body {
   color: #d9cdb4;
 }
 
-/* 锁：锁定态 */
+/* 锁：扁平 SVG 图标，放在右下角角落，不挡问号 */
 .level-lock {
   display: none;
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 40px;
-  z-index: 3;
-  filter: drop-shadow(0 3px 5px rgba(90, 55, 25, 0.35));
+  right: 10px;
+  bottom: 10px;
+  width: 30px;
+  height: 30px;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.level-lock svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 2px 3px rgba(90, 55, 25, 0.25));
+}
+
+.level-lock .lock-body {
+  fill: #6b5235;
+}
+
+.level-lock .lock-shackle {
+  fill: none;
+  stroke: #6b5235;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+
+.level-lock .lock-hole,
+.level-lock .lock-slot {
+  fill: #fdf9ef;
 }
 
 /* ---------- 状态切换 ---------- */
 .level-card.is-completed .level-question {
   display: none;
 }
-/* 锁定卡片：保留正方形底纸作为占位，只把问号字变成透明，锁盖在中央 */
+/* 锁定卡片：问号仍可见（整体灰化已足够传达"未解锁"），只弱化一档，
+   让右下角的锁角标承担"锁定"语义，而不是盖住问号 */
 .level-card.is-locked .level-question {
-  color: transparent;
-  background: #e0d4ba;
-  box-shadow: inset 0 0 0 1px rgba(90, 55, 25, 0.14);
+  opacity: 0.55;
 }
 .level-card.is-completed .level-thumb,
 .level-card.is-completed .level-name {
