@@ -35,7 +35,6 @@ const KNOB_SIZE = 0.42;
 const COLOR_RAIL = 0x6f7681;
 const COLOR_KNOB = 0x4a9eff;
 const COLOR_KNOB_HOT = 0x9ed0ff;
-const COLOR_PLANE = 0x4a9eff;
 const COLOR_OUTLINE = 0x6f8bb0;
 
 /** 相机换边的滞回阈值，避免在 z≈0 时反复抖动 */
@@ -55,8 +54,6 @@ export class SliceHandles {
     this.rails = new Map();
     /** @type {THREE.Mesh[]} 可拾取的滑块 */
     this.knobs = [];
-    /** @type {Map<string, THREE.Mesh>} `${axis}:${side}` → 剖切面 */
-    this.planes = new Map();
     /** @type {THREE.LineSegments|null} 完整体积的轮廓线（截面模式下显示） */
     this.outline = null;
 
@@ -131,25 +128,6 @@ export class SliceHandles {
         knob.castShadow = false;
         this.knobs.push(knob);
         this.group.add(knob);
-
-        // 剖切面：只在该端被收窄时显示
-        const planeGeo = new THREE.PlaneGeometry(1, 1);
-        this._geometries.push(planeGeo);
-        const planeMat = new THREE.MeshBasicMaterial({
-          color: COLOR_PLANE,
-          transparent: true,
-          opacity: 0.085,
-          depthWrite: false,
-          side: THREE.DoubleSide,
-        });
-        this._materials.push(planeMat);
-        const plane = new THREE.Mesh(planeGeo, planeMat);
-        plane.name = `SlicePlane_${axis}_${side}`;
-        plane.visible = false;
-        plane.renderOrder = 3;
-        if (axis === AXIS_X) plane.rotation.y = Math.PI / 2;
-        this.planes.set(`${axis}:${side}`, plane);
-        this.group.add(plane);
       }
     }
 
@@ -190,8 +168,12 @@ export class SliceHandles {
   }
 
   /**
-   * 按当前 SliceRange 更新滑块位置、剖切面与轮廓
+   * 按当前 SliceRange 更新滑块位置与体积轮廓
+   *
    * 每次范围变化后调用即可（不需要每帧调）。
+   * 注意：截面**不再渲染剖切面**——半透明的剖切面会与方块表面在深度上
+   * 竞争产生闪烁（z-fighting），而它本身不提供任何解题信息，纯属视觉负担。
+   * 截面效果完全靠"隐藏一侧方块 + 新暴露面长出数字"来体现。
    */
   syncFromSlice() {
     if (!this.slice || !this.grid) return;
@@ -208,7 +190,6 @@ export class SliceHandles {
       const usable = activeAxis < 0 || activeAxis === axis;
       knob.visible = usable;
 
-      const n = axis === AXIS_X ? grid.W : grid.D;
       const along = this._boundToWorld(axis, side);
 
       const yBase = -(grid.H * CELL) / 2 - RAIL_GAP;
@@ -218,21 +199,6 @@ export class SliceHandles {
       } else {
         const xSide = this._railSide.get(AXIS_Z);
         knob.position.set(xSide * ((grid.W * CELL) / 2 + RAIL_GAP), yBase, along);
-      }
-
-      // 剖切面
-      const plane = this.planes.get(`${axis}:${side}`);
-      const atEdge =
-        side === 0 ? this.slice.getBound(axis, 0) === 0 : this.slice.getBound(axis, 1) === n - 1;
-      plane.visible = usable && !atEdge;
-      if (plane.visible) {
-        if (axis === AXIS_X) {
-          plane.position.set(along, 0, 0);
-          plane.scale.set(grid.D * CELL, grid.H * CELL, 1);
-        } else {
-          plane.position.set(0, 0, along);
-          plane.scale.set(grid.W * CELL, grid.H * CELL, 1);
-        }
       }
     }
 
@@ -336,7 +302,6 @@ export class SliceHandles {
     this._geometries = [];
     this._materials = [];
     this.rails.clear();
-    this.planes.clear();
     this.knobs = [];
     this.outline = null;
     this.hovered = null;

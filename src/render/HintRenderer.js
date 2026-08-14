@@ -47,7 +47,7 @@ const INK_COLOR = 0x4a4238;
  *  - DIM_SHADE：墨色明度乘数，让数字明显"退后"一档
  *  - DIM_ALPHA：透明度乘数，略透出方块底色，读作"已失效的线索"
  */
-const DIM_SHADE = 0.42;
+const DIM_SHADE = 0.21;
 const DIM_ALPHA = 0.6;
 
 /**
