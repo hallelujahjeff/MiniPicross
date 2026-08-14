@@ -67,6 +67,16 @@ export class PuzzleModel {
     this.completedLineCount = 0;
     /** @type {number[]} 复用的连锁工作队列 */
     this._pending = [];
+
+    /**
+     * 提示重算版本号
+     *
+     * 提示贴花的显示状态不仅取决于"哪些方块可见"（→ PuzzleRenderer.visibilityVersion），
+     * 还取决于"这条线涂到哪一步了"（压淡 / 整行完成隐藏）。涂色不改变可见性，
+     * 却会改变 lineNeedPaint / lineDone，因此需要一个独立版本号在涂色时自增，
+     * 让 App 在纯涂色后也重算一次贴花。
+     */
+    this.hintRevision = 0;
   }
 
   /** 建立每条线的「还差几个要凿 / 还差几个要涂」计数器 */
@@ -204,7 +214,10 @@ export class PuzzleModel {
 
   /**
    * 切换标记（Ctrl + 左键）
-   * @returns {{result:"painted"|"unpainted"|"locked"|"noop"}}
+   *
+   * 涂色只能涂在**正确**的方块上：涂到"应该敲掉"的方块和敲错一样，
+   * 记一次失误并拒绝上色（方块保持原状），由调用方播放闪红 + 失误音效。
+   * @returns {{result:"painted"|"unpainted"|"mistake"|"locked"|"noop"}}
    */
   togglePaint(index) {
     if (!this.isValidIndex(index)) return { result: "noop" };
@@ -212,6 +225,12 @@ export class PuzzleModel {
     if (BlockState.isRemoved(state)) return { result: "noop" };
     // 已确认的方块是"这一行推完了"的既成结论，不允许再回退
     if (BlockState.isConfirmed(state)) return { result: "locked" };
+
+    // 涂到非解方块上 = 错误：只记失误，不上色
+    if (!BlockState.isPainted(state) && this.solution[index] === 0) {
+      this.mistakes++;
+      return { result: "mistake" };
+    }
 
     const painted = !BlockState.isPainted(state);
     this._applyPaint(index, painted);
@@ -348,6 +367,9 @@ export class PuzzleModel {
       : state & ~BlockState.PAINTED;
     this.paintedCount += painted ? 1 : -1;
     this.dirty.add(index);
+    // 涂色/取消涂色会改变 lineNeedPaint、可能连锁触发 lineDone，
+    // 但不改变可见性，所以这里单独推进提示版本，让贴花及时压淡/隐藏
+    this.hintRevision++;
 
     // 只有解方块才计入"还差几个要涂"（涂错的非解方块不影响整行完成判定，
     // 因为那一格还没凿掉，lineNeedRemove 仍然 > 0）

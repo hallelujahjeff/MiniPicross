@@ -5,8 +5,8 @@ import { MARK_PLAIN, MARK_CIRCLE, MARK_SQUARE } from "../puzzle/HintModel.js";
  * 提示数字的字形图集（运行时用 Canvas2D 生成，不需要任何外部资源）
  *
  * ## 为什么用图集而不是每个数字一张贴图 / 一个 Sprite
- * 一个 10³ 谜面最多有 600 个提示贴花。如果每个贴花是独立 Mesh/Sprite，
- * 就是 600 个 draw call；用**一张图集 + 一个 InstancedMesh + 每实例 UV 偏移**，
+ * 一个 10³ 谜面最多有 6000 个提示贴花。如果每个贴花是独立 Mesh/Sprite，
+ * 就是 6000 个 draw call；用**一张图集 + 一个 InstancedMesh + 每实例 UV 偏移**，
  * 全部提示只要 1 个 draw call。
  *
  * ## 布局

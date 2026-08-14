@@ -5,31 +5,39 @@ import { AXES, lineDims } from "./HintModel.js";
  * 提示贴花的位置计算（纯数据，不依赖 three）
  *
  * ## 原作的数字长在哪
- * 提示不是浮在空中的标签，而是**印在方块表面上的数字**：
- * 每条线的数字出现在这条线上"最外侧那个还看得见的方块"的朝外一面。
- * 因此从任意角度看长方体，六个面上都铺满数字；
- * 一旦最外层被凿掉，同一个数字就"移"到后面那块的表面上——
- * 这正是玩家推理时最重要的视觉反馈。
+ * 提示不是浮在空中的标签，而是**印在方块表面上的数字**。
  *
- * ## 计算方式
- * 一条沿 axis 的线上，找出第一个可见方块 a 与最后一个可见方块 b：
- *   - a 的**负向面**贴上该线的提示（它前面已经没有东西挡着了）
- *   - b 的**正向面**贴上该线的提示
- * 若 a === b（线上只剩一块），两个面都贴。
+ * ## 计算方式：每个"暴露面"都贴数字
+ * 一条沿 axis 的线，遍历线上每一个**可见**方块，看它沿该轴的两个方向
+ * 是否"暴露"（边界外 / 相邻格已凿除 / 相邻格被截面隐藏）：
+ *   - 负方向暴露 → 在负向面贴一个该线的提示
+ *   - 正方向暴露 → 在正向面贴一个该线的提示
+ *
+ * 这样数字自然只出现在"看得见的面"上：一条连续方块只有两端有数字；
+ * 凿掉中间一块后，空位两侧新暴露的面会立刻长出数字（这正是玩家推理时
+ * 最重要的视觉反馈）。比"只贴最外侧两块"更贴合原作——原作里一旦某个
+ * 方向有数字，这条线上所有露出来的对应面都会标上它。
+ *
+ * ## 三档显示状态（由谜题进度决定）
+ *  1. **正常**：这条线还有解方块没涂，数字照常显示。
+ *  2. **压淡**：这条线的解方块全部涂完、但仍剩非解方块没敲。
+ *     此时那些非解方块的数字被压淡，提醒玩家"这几个已经确定要敲掉了"。
+ *     压淡是按 (方块, 面) 维度的——一个方块可能 X 方向压淡、Y 方向正常。
+ *  3. **隐藏**：这条线整体完成（该敲的都敲了、该涂的都涂了），数字已无用，
+ *     整条收起，画面更干净。
  *
  * ## 0 与空白
  * 数字 **0 会照常贴出来**（语义是"这条线整条都要凿掉"）；
  * 只有被 `hints.visible` 标为隐藏的线才什么都不贴。
  * 于是"空白面"在游戏里有唯一含义：**这条线的提示被故意藏起来了**。
- * 这一条很关键——否则玩家凿开一块后看到后面那块是空白面，
- * 会以为是渲染漏了，而不是"这条线是 0 / 被隐藏"。
  *
  * "可见"由调用方给出（`blockToSlot[block] >= 0`），所以同一套逻辑同时覆盖
  * 「已凿除」与「被截面隐藏」两种不可见——截面切开后新暴露的面会自动长出数字。
  *
- * 每条线最多产出 2 个贴花，所以贴花总数有紧的上界：
- *   2 × (线总数) = 2 × (H·D + W·D + W·H)
- * 10³ 谜面只有 600 个，全部塞进一个 InstancedMesh 即可（1 个 draw call）。
+ * ## 容量
+ * 每个格子属于 3 条线、每条线最多贡献 2 个方向面，故贴花数有紧上界：
+ *   6 × grid.count
+ * 10³ 谜面即 6000 个，全部塞进一个 InstancedMesh（1 个 draw call）。
  */
 
 export const FACE_NX = 0;
@@ -56,10 +64,9 @@ const AXIS_FACES = [
   [FACE_NZ, FACE_PZ],
 ];
 
-/** 贴花数量上界 */
+/** 贴花数量上界：每个格子最多 6 个（3 条线 × 2 个方向面） */
 export function hintFaceCapacity(grid) {
-  const lines = grid.H * grid.D + grid.W * grid.D + grid.W * grid.H;
-  return 2 * lines;
+  return grid.count * 6;
 }
 
 /**
@@ -76,6 +83,8 @@ export class HintFaceList {
     this.values = new Uint8Array(capacity);
     /** 记号（MARK_*） */
     this.marks = new Uint8Array(capacity);
+    /** 是否压淡（0 = 正常，1 = 压淡） */
+    this.dims = new Uint8Array(capacity);
     this.length = 0;
     /** 因容量不足被丢弃的贴花数（正常应恒为 0，非 0 说明容量公式算错了） */
     this.overflow = 0;
@@ -86,7 +95,7 @@ export class HintFaceList {
     this.overflow = 0;
   }
 
-  push(block, face, value, mark) {
+  push(block, face, value, mark, dim = 0) {
     if (this.length >= this.capacity) {
       this.overflow++;
       return false;
@@ -96,6 +105,7 @@ export class HintFaceList {
     this.faces[i] = face;
     this.values[i] = value;
     this.marks[i] = mark;
+    this.dims[i] = dim;
     return true;
   }
 }
@@ -105,11 +115,12 @@ export class HintFaceList {
  *
  * @param {import("../core/GridCoords.js").Grid} grid
  * @param {import("./HintModel.js").HintSet} hints
+ * @param {import("./PuzzleModel.js").PuzzleModel} model 提供进度状态（用于隐藏/压淡判定）
  * @param {Int32Array} blockToSlot 方块 → 渲染槽位；< 0 表示当前不可见
  * @param {HintFaceList} out 复用的输出缓冲
  * @returns {HintFaceList} 就是 out
  */
-export function collectHintFaces(grid, hints, blockToSlot, out) {
+export function collectHintFaces(grid, hints, model, blockToSlot, out) {
   out.reset();
 
   for (const axis of AXES) {
@@ -119,27 +130,41 @@ export function collectHintFaces(grid, hints, blockToSlot, out) {
     const visible = hints.visible[axis];
     const [negFace, posFace] = AXIS_FACES[axis];
 
+    const lineDone = model.lineDone[axis];
+    const lineSolid = model.lineSolid[axis];
+    const lineNeedPaint = model.lineNeedPaint[axis];
+    const lineNeedRemove = model.lineNeedRemove[axis];
+    const solution = model.solution;
+
     for (let v = 0; v < vCount; v++) {
       for (let u = 0; u < uCount; u++) {
         const key = u + v * uCount;
         if (visible[key] === 0) continue; // 整行隐藏：什么都不贴
-
-        const line = lineOf(grid, axis, u, v);
-        let first = -1;
-        let last = -1;
-        for (let i = 0; i < line.length; i++) {
-          const block = line.start + i * line.step;
-          if (blockToSlot[block] >= 0) {
-            if (first < 0) first = block;
-            last = block;
-          }
-        }
-        if (first < 0) continue; // 整条线都看不见了
+        if (lineDone[key]) continue; // 整行完成：数字已无用，收起
 
         const value = counts[key];
         const mark = marks[key];
-        out.push(first, negFace, value, mark);
-        out.push(last, posFace, value, mark);
+        // 压淡：这条线有解方块、且全部涂完、但还剩下非解方块没敲
+        const dimLine =
+          lineSolid[key] > 0 && lineNeedPaint[key] === 0 && lineNeedRemove[key] > 0;
+
+        const line = lineOf(grid, axis, u, v);
+        for (let i = 0; i < line.length; i++) {
+          const block = line.start + i * line.step;
+          if (blockToSlot[block] < 0) continue; // 已凿除 / 被截面隐藏
+
+          // 压淡只针对"该敲掉却还没敲"的非解方块
+          const dim = dimLine && solution[block] === 0 ? 1 : 0;
+
+          // 负方向暴露（边界外 / 相邻格不可见）→ 负向面贴
+          if (i === 0 || blockToSlot[line.start + (i - 1) * line.step] < 0) {
+            out.push(block, negFace, value, mark, dim);
+          }
+          // 正方向暴露 → 正向面贴
+          if (i === line.length - 1 || blockToSlot[line.start + (i + 1) * line.step] < 0) {
+            out.push(block, posFace, value, mark, dim);
+          }
+        }
       }
     }
   }

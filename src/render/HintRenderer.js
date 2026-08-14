@@ -43,6 +43,14 @@ const DECAL_SIZE = 0.78;
 const INK_COLOR = 0x4a4238;
 
 /**
+ * 压淡参数（"这条线已推完、这些方块确定要敲掉"的提示）
+ *  - DIM_SHADE：墨色明度乘数，让数字明显"退后"一档
+ *  - DIM_ALPHA：透明度乘数，略透出方块底色，读作"已失效的线索"
+ */
+const DIM_SHADE = 0.42;
+const DIM_ALPHA = 0.6;
+
+/**
  * 各面的墨色明度系数
  * 背光面（底面、-X、-Z）的方块本身更暗，墨色要相应提亮才读得清；
  * 迎光面则用足黑度。数值范围刻意收窄，避免六个面看起来像六种颜色。
@@ -91,6 +99,8 @@ export class HintRenderer {
     this.cellUvAttr = null;
     /** @type {THREE.InstancedBufferAttribute|null} */
     this.shadeAttr = null;
+    /** @type {THREE.InstancedBufferAttribute|null} */
+    this.dimAttr = null;
 
     this.grid = null;
     this.visibleCount = 0;
@@ -128,10 +138,16 @@ export class HintRenderer {
       "aShade",
       new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1),
     );
+    this.geometry.setAttribute(
+      "aDim",
+      new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1),
+    );
     this.cellUvAttr = this.geometry.getAttribute("aCellUv");
     this.shadeAttr = this.geometry.getAttribute("aShade");
+    this.dimAttr = this.geometry.getAttribute("aDim");
     this.cellUvAttr.setUsage(THREE.DynamicDrawUsage);
     this.shadeAttr.setUsage(THREE.DynamicDrawUsage);
+    this.dimAttr.setUsage(THREE.DynamicDrawUsage);
 
     this.material = createHintMaterial(atlas.texture);
 
@@ -187,8 +203,9 @@ export class HintRenderer {
   /**
    * 按贴花列表重建全部实例
    *
-   * 每次凿除 / 每次拖动截面都会调用；600 个实例的重写是纯 TypedArray 写入，
-   * 远比"维护增量差异"简单且不易出错，实测成本可忽略。
+   * 凿除 / 拖动截面 / 涂色（压淡）都会调用；上限 6000 个实例（10³ 关卡）的
+   * 重写是纯 TypedArray 写入，远比"维护增量差异"简单且不易出错，
+   * 实测成本在 0.5ms 量级，可以忽略。
    *
    * @param {import("../puzzle/HintFaces.js").HintFaceList} list
    */
@@ -198,6 +215,7 @@ export class HintRenderer {
     const n = Math.min(list.length, this.mesh.instanceMatrix.count);
     const uvArr = this.cellUvAttr.array;
     const shadeArr = this.shadeAttr.array;
+    const dimArr = this.dimAttr.array;
 
     for (let i = 0; i < n; i++) {
       const block = list.blocks[i];
@@ -220,6 +238,7 @@ export class HintRenderer {
       uvArr[i * 2] = this._uv.u;
       uvArr[i * 2 + 1] = this._uv.v;
       shadeArr[i] = FACE_SHADE[face];
+      dimArr[i] = list.dims[i];
     }
 
     this.mesh.count = n;
@@ -227,6 +246,7 @@ export class HintRenderer {
     this.mesh.instanceMatrix.needsUpdate = true;
     this.cellUvAttr.needsUpdate = true;
     this.shadeAttr.needsUpdate = true;
+    this.dimAttr.needsUpdate = true;
     return n;
   }
 
@@ -262,6 +282,7 @@ export class HintRenderer {
     this.material = null;
     this.cellUvAttr = null;
     this.shadeAttr = null;
+    this.dimAttr = null;
     this.grid = null;
     this.visibleCount = 0;
     this._fade.active = false;
@@ -269,10 +290,11 @@ export class HintRenderer {
 }
 
 /**
- * 贴花材质：MeshBasicMaterial + 两个实例属性
+ * 贴花材质：MeshBasicMaterial + 三个实例属性
  *
  *  - aCellUv：该实例在图集里的格子原点，配合常量缩放取到对应数字
  *  - aShade ：该面的墨色明度系数
+ *  - aDim   ：是否压淡（0 = 正常，1 = 压淡）
  */
 function createHintMaterial(atlasTexture) {
   const material = new THREE.MeshBasicMaterial({
@@ -291,6 +313,8 @@ function createHintMaterial(atlasTexture) {
 
   const cellU = (1 / ATLAS_COLS).toFixed(8);
   const cellV = (1 / ATLAS_ROWS).toFixed(8);
+  const dimShade = DIM_SHADE.toFixed(6);
+  const dimAlpha = DIM_ALPHA.toFixed(6);
 
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
@@ -299,30 +323,36 @@ function createHintMaterial(atlasTexture) {
         `#include <common>
         attribute vec2 aCellUv;
         attribute float aShade;
-        varying float vShade;`,
+        attribute float aDim;
+        varying float vShade;
+        varying float vDim;`,
       )
       .replace(
         "#include <uv_vertex>",
         `#include <uv_vertex>
         // 把 [0,1] 的平面 UV 映射到图集里那一格
         vMapUv = aCellUv + vMapUv * vec2( ${cellU}, ${cellV} );
-        vShade = aShade;`,
+        vShade = aShade;
+        vDim = aDim;`,
       );
 
     shader.fragmentShader = shader.fragmentShader
       .replace(
         "#include <common>",
         `#include <common>
-        varying float vShade;`,
+        varying float vShade;
+        varying float vDim;`,
       )
       .replace(
         "#include <map_fragment>",
         `#include <map_fragment>
-        diffuseColor.rgb *= vShade;`,
+        // 压淡：明度与透明度一并压低，读作"这条线已经推完，这些方块确定要敲"
+        diffuseColor.rgb *= vShade * mix(1.0, ${dimShade}, vDim);
+        diffuseColor.a *= mix(1.0, ${dimAlpha}, vDim);`,
       );
   };
   // 注入过的 shader 必须有独立缓存键，否则会和普通 MeshBasicMaterial 撞程序缓存
-  material.customProgramCacheKey = () => "picross-hint-decal-v1";
+  material.customProgramCacheKey = () => "picross-hint-decal-v2";
 
   return material;
 }

@@ -111,7 +111,9 @@ export class App {
     /** @type {HintFaceList|null} */
     this._hintFaces = null;
     /** 上次重建提示贴花时的可见性版本号 */
-    this._hintVersion = -1;
+    this._hintVisVersion = -1;
+    /** 上次重建提示贴花时的谜题进度版本号（涂色/整行完成会推进它） */
+    this._hintRevision = -1;
     /** 当前关卡的谜面校验结论 */
     this.analysis = null;
     /** 是否直接展示"造型解"（把非解方块一次性凿除，用于校验模板解析） */
@@ -225,11 +227,12 @@ export class App {
 
     this.puzzleRenderer.build(this.puzzle, this.slice);
 
-    // 提示贴花：容量有紧上界（每条线最多 2 个），一次分配够用到通关
+    // 提示贴花：容量有紧上界（每个格子最多 6 个），一次分配够用到通关
     this._hintFaces = new HintFaceList(hintFaceCapacity(level.grid));
     this.hintRenderer.build(level.grid, this._hintFaces.capacity, this.renderer);
     this.hintRenderer.startFadeIn();
-    this._hintVersion = -1;
+    this._hintVisVersion = -1;
+    this._hintRevision = -1;
 
     this.sliceHandles.build(level.grid, this.slice);
     this.sliceHandles.setVisible(true);
@@ -302,7 +305,11 @@ export class App {
     const { result } = this.puzzle.togglePaint(block);
     if (result === "painted") this.sound.playPaint();
     else if (result === "unpainted") this.sound.playUnpaint();
-    else if (result === "locked") {
+    else if (result === "mistake") {
+      // 涂到"应该敲掉"的方块上：和敲错完全一样的反馈
+      this.puzzleRenderer.flashBlock(block, INSTANCE_COLOR_MISTAKE, { bounce: 0.07 });
+      this.sound.playMistake();
+    } else if (result === "locked") {
       // 已确认的方块不能再改，给一个"点不动"的反馈
       this.puzzleRenderer.flashBlock(block, INSTANCE_COLOR_BLOCKED, { bounce: 0.02 });
       this.sound.playBlocked();
@@ -461,20 +468,26 @@ export class App {
   }
 
   /**
-   * 提示贴花只在"可见集合变了"之后重算
+   * 提示贴花在"可见集合"或"谜题进度"变化后重算
    *
-   * 凿除、拖动截面都会改变可见集合；纯涂色不会。靠版本号比较可以避免
-   * 每帧无意义地重扫全部线。
+   * 两个触发源缺一不可：
+   *  - 凿除、拖动截面会改变可见集合（PuzzleRenderer.visibilityVersion）；
+   *  - 纯涂色、整行完成不改变可见性，却会改变压淡/隐藏判定
+   *    （PuzzleModel.hintRevision）。
+   * 靠两个版本号比较可以避免每帧无意义地重扫全部线。
    */
   _maybeRebuildHints() {
     if (!this.puzzle || !this._hintFaces) return;
-    const version = this.puzzleRenderer.visibilityVersion;
-    if (version === this._hintVersion) return;
-    this._hintVersion = version;
+    const visVersion = this.puzzleRenderer.visibilityVersion;
+    const hintRevision = this.puzzle.hintRevision;
+    if (visVersion === this._hintVisVersion && hintRevision === this._hintRevision) return;
+    this._hintVisVersion = visVersion;
+    this._hintRevision = hintRevision;
 
     collectHintFaces(
       this.puzzle.grid,
       this.puzzle.hints,
+      this.puzzle,
       this.puzzleRenderer.blockToSlot,
       this._hintFaces,
     );
