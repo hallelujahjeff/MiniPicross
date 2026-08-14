@@ -2,7 +2,15 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      移动端视口：
+        viewport-fit=cover 让内容延伸到 iPhone 刘海屏，配合 CSS 的 safe-area-inset 使用
+        user-scalable=no    禁掉双指缩放页面（缩放交给游戏内 OrbitControls 处理）
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <title>立体绘图方块 · Picross 3D</title>
     <!-- 内联 SVG 图标：省掉一次 favicon.ico 请求（否则控制台永远挂着一条 404） -->
     <link
@@ -23,6 +31,12 @@
       }
       canvas {
         display: block;
+        /* 关键：阻止触摸手势触发浏览器默认的滚动/缩放/双击放大，
+           否则手机端拖视角 / 拖滑块会被浏览器抢走手势 */
+        touch-action: none;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-user-select: none;
+        user-select: none;
       }
     </style>
   </head>

@@ -65,29 +65,24 @@ export class GameHud {
     this.root = root;
 
     // ---------- 左下操作说明 ----------
+    // 文案随输入设备切换：触摸设备没有 Ctrl / 右键 / 滚轮，长按才是涂色。
+    // 三个条件按可靠性排序：matchMedia 准确但 headless 模拟器可能不返回 true；
+    // maxTouchPoints 在所有真实移动设备上 > 0；ontouchstart 是最古老的兜底。
+    const isTouch =
+      window.matchMedia?.("(pointer: coarse)").matches ||
+      (typeof navigator !== "undefined" && navigator.maxTouchPoints > 0) ||
+      typeof window.ontouchstart !== "undefined";
     const help = document.createElement("div");
     help.className = "hud-help";
-    help.innerHTML =
-      "<b>左键</b> 凿除 &nbsp;·&nbsp; <b>Ctrl+左键</b> 标记<br />" +
-      "<b>右键拖拽</b> 转视角 &nbsp;·&nbsp; <b>滚轮</b> 缩放<br />" +
-      "拖底部<b>滑块</b> 看内部剖面 &nbsp;·&nbsp; <b>Esc</b> 恢复";
+    help.innerHTML = isTouch
+      ? "<b>点按</b> 凿除 &nbsp;·&nbsp; <b>长按</b> 涂色<br />" +
+        "<b>单指拖</b> 转视角 &nbsp;·&nbsp; <b>双指</b> 缩放<br />" +
+        "拖底部<b>滑块</b> 看内部 &nbsp;·&nbsp; <b>点空白</b> 退出"
+      : "<b>左键</b> 凿除 &nbsp;·&nbsp; <b>Ctrl+左键</b> 标记<br />" +
+        "<b>右键拖拽</b> 转视角 &nbsp;·&nbsp; <b>滚轮</b> 缩放<br />" +
+        "拖底部<b>滑块</b> 看内部剖面 &nbsp;·&nbsp; <b>Esc</b> 恢复";
     mount.appendChild(help);
     this.help = help;
-
-    // ---------- 底部截面条 ----------
-    const sliceBar = document.createElement("div");
-    sliceBar.className = "slice-bar";
-    const sliceText = document.createElement("span");
-    sliceText.className = "slice-bar-text";
-    const sliceBtn = document.createElement("button");
-    sliceBtn.className = "hud-btn hud-btn-inline";
-    sliceBtn.type = "button";
-    sliceBtn.textContent = "恢复完整显示（Esc）";
-    sliceBtn.addEventListener("click", () => this.onResetSlice());
-    sliceBar.append(sliceText, sliceBtn);
-    mount.appendChild(sliceBar);
-    this.sliceBar = sliceBar;
-    this.sliceText = sliceText;
 
     // ---------- 通关演出：顶部模型名 + 底部冷知识 ----------
     const victoryTop = document.createElement("div");
@@ -146,18 +141,6 @@ export class GameHud {
   }
 
   /**
-   * 更新底部截面条
-   * @param {import("../puzzle/SliceRange.js").SliceRange} slice
-   */
-  setSlice(slice) {
-    const active = Boolean(slice?.active) && !this._victoryVisible;
-    this.sliceBar.classList.toggle("is-visible", active);
-    if (active) {
-      this.sliceText.textContent = `截面模式：${slice.describe()}（另一个轴已锁定）`;
-    }
-  }
-
-  /**
    * 展示通关演出：顶部模型名 + 底部冷知识
    * @param {{name:string, trivia:string}} level
    * @param {{mistakes:number, size:number[]}} stats
@@ -176,7 +159,6 @@ export class GameHud {
     this.victoryBottom.classList.add("is-visible");
     this.root.classList.add("is-dimmed");
     this.help.classList.add("is-dimmed");
-    this.sliceBar.classList.remove("is-visible");
     // 通关后常驻"回到选关界面"入口（即使 Esc 关掉演出也找得到）
     this.exitBtn.classList.add("is-visible");
   }
@@ -197,7 +179,6 @@ export class GameHud {
     window.removeEventListener("keydown", this._onKeyDown);
     this.root.remove();
     this.help.remove();
-    this.sliceBar.remove();
     this.victoryTop.remove();
     this.victoryBottom.remove();
   }

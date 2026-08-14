@@ -255,7 +255,6 @@ export class App {
     if (this.reveal) this._applyReveal();
 
     this.currentLevelId = id;
-    this.hud?.setSlice(this.slice);
     this._refreshStats();
 
     if (DEBUG) {
@@ -350,7 +349,6 @@ export class App {
   onSliceChanged() {
     this.puzzleRenderer.rebuildVisible();
     this.sliceHandles.syncFromSlice();
-    this.hud?.setSlice(this.slice);
     this.sound.playSlice();
   }
 
@@ -361,7 +359,6 @@ export class App {
       this.puzzleRenderer.rebuildVisible();
       this.sliceHandles.syncFromSlice();
     }
-    this.hud?.setSlice(this.slice);
   }
 
   /**
@@ -599,6 +596,12 @@ export class App {
       onChisel: (block) => this.chisel(block),
       onPaint: (block) => this.togglePaint(block),
       onSliceChange: () => this.onSliceChanged(),
+      // 点空白退出截面（触摸端没有 Esc 键，这是主要的退出方式）
+      onResetSlice: () => this.resetSlice(),
+      // 拖动截面滑块时锁定相机，避免单指旋转抢手势
+      onDragStateChange: (dragging) => {
+        if (this.controls) this.controls.enabled = !dragging;
+      },
       // 浏览器要求音频在用户手势里启动，第一次按下时顺手解锁
       onGesture: () => this.sound.unlock(),
     });
