@@ -109,7 +109,9 @@
 
 模板里唯一与提示有关的字段是 `hiddenHints`：哪些线的提示被**整行隐藏**。
 它由 `npm run prune:levels` 离线算出并写回，因为"哪条提示是冗余的"必须
-藏掉它再跑一遍求解器才能确认，一关要跑上百次传播。
+藏掉它再跑一遍求解器才能确认，一关要跑上百次传播。裁剪受三条约束保护
+（每个解方块 ≥2 条可见线、方框提示永不隐藏、难度上限 4.6），
+详见 [`puzzle-generation.md`](./puzzle-generation.md) §2.2。
 
 ```jsonc
 "hiddenHints": {          // 每个轴一组线号，语义见 puzzle-generation.md §2
@@ -161,13 +163,22 @@ npm run audit:levels:fix    # 对不合格关卡做最小改动修复并写回
 
 1. 在 `src/level/levels/` 新建 `my-level.json`。
 2. 填 `size`，用 `layers` 逐层画出造型（从底层开始）。
-3. 加 `palette`（+ 需要时的 `colors`）与 `trivia`。
-4. 跑 `npm run audit:levels` 确认这一关是 `✓`；不是就加 `--fix`。
-5. 跑 `npm run prune:levels` 生成 `hiddenHints`，再跑一次 `audit:levels` 复核。
-6. 保存 → Vite HMR 自动生效，在右上角 HUD 的关卡下拉里选择即可。
-7. 若格式有误，控制台会打印 `[关卡 my-level] ...` 的具体原因，且**不影响其他关卡**加载。
+3. 跑 `npm run report:shapes` 做**造型体检**，确认两件事：
+   - **方框数 > 0** —— 方框提示（≥3 段）是造型的固有性质，裁剪阶段变不出来。
+     可靠手法是让一条线穿过三个分离的柱体（不等高的蜡烛 / 桥墩 / 仙人掌手臂）。
+   - **对称列是 `--`** —— 镜像对称造型的推理量实质减半，玩家推出一半就能照抄另一半。
+4. 加 `palette`（+ 需要时的 `colors`）与 `trivia`。
+5. 跑 `npm run audit:levels` 确认这一关是 `✓`；不是就加 `--fix`。
+6. 跑 `npm run prune:levels` 生成 `hiddenHints`，再跑一次 `audit:levels` 复核难度。
+7. 保存 → Vite HMR 自动生效，在右上角 HUD 的关卡下拉里选择即可。
+8. 若格式有误，控制台会打印 `[关卡 my-level] ...` 的具体原因，且**不影响其他关卡**加载。
 
-`meta.order` 决定它在下拉列表与数字键 1–9 里的位置。
+`meta.order` 决定它在下拉列表与数字键 1–9 里的位置，请按难度递增排（性能测试关用 99）。
+
+> ⚠️ 用编辑器/脚本改 JSON 时注意**不要写入 UTF-8 BOM**。PowerShell 的
+> `Set-Content -Encoding UTF8` 会加 BOM，`JSON.parse` 会直接报
+> `Unexpected token '\uFEFF'`。要么用 `[System.Text.UTF8Encoding]::new($false)`，
+> 要么就让 `prune:levels` 去写回（它用 Node 的 `writeFileSync`，天然无 BOM）。
 
 ## 10. 预留扩展位
 

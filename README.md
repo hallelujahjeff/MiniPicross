@@ -41,8 +41,12 @@ URL 参数：`?level=duck`、`?audit=1`（控制台打印全部关卡的可解�
 *只用逐线约束传播就能把每一格定下来*。判定、难度模型与提示裁剪算法见
 [`docs/puzzle-generation.md`](docs/puzzle-generation.md)。
 
+10 个内置关卡里，除教学关与性能测试关外，难度落在 3.18 ~ 4.08（适中 ~ 有挑战），
+推理链深度（波次）3 ~ 7。
+
 ```bash
 npm run audit:levels     # 审计全部关卡的可解性与难度
+npm run report:shapes    # 造型体检：分段分布（方框提示来源）与镜像对称性
 npm run prune:levels     # 重算可隐藏的提示行（改过造型必须重跑）
 npm run test:generator   # 随机造型生成器冒烟测试
 npm run test:repair      # 最小改动修复算法冒烟测试
@@ -59,7 +63,7 @@ src/
   input/    相机控制与交互
   audio/    WebAudio 实时合成音效（零资源）
   ui/       HUD
-tools/      离线关卡审计工具、浏览器端到端验收脚本
+tools/      离线关卡审计工具、造型体检工具、浏览器端到端验收脚本
 docs/       设计与验收文档
 ```
 

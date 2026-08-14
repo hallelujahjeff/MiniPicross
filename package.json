@@ -10,6 +10,7 @@
     "audit:levels": "node tools/level-audit.mjs",
     "audit:levels:fix": "node tools/level-audit.mjs --fix",
     "prune:levels": "node tools/level-audit.mjs --prune",
+    "report:shapes": "node tools/level-shape-report.mjs",
     "test:generator": "node tools/level-audit.mjs --gen 40",
     "test:repair": "node tools/level-audit.mjs --repair 36"
   },

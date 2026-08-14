@@ -1,6 +1,15 @@
 import { lineOf, coordsOf } from "../core/GridCoords.js";
 import { Rng } from "../core/Rng.js";
-import { AXES, computeHints, lineCount, lineDims, lineKeyOfCell } from "./HintModel.js";
+import {
+  AXES,
+  MARK_PLAIN,
+  MARK_CIRCLE,
+  MARK_SQUARE,
+  computeHints,
+  lineCount,
+  lineDims,
+  lineKeyOfCell,
+} from "./HintModel.js";
 import { getLineMasks } from "./LineMasks.js";
 
 /**
@@ -385,12 +394,33 @@ export function analyzePuzzle(grid, solution, options = {}) {
  * 判断"能不能藏"没有捷径，只能藏了之后重新跑一遍传播：
  * 只要仍然能把每一格都定下来，就说明这条线是冗余的。
  *
- * ## 顺序与难度控制
- *  - 候选顺序用 seed 确定性打乱：既让隐藏分布看起来自然（不成条带），
- *    又保证同一关每次算出来的结果完全一样（可复现、可 diff）。
- *  - 每次成功隐藏后重新评分，一旦超过 `maxScore` 就撤回这一步。
- *    这是"有挑战但不太难"的直接闸门。
- *  - `maxHiddenRatio` 是安全兜底，避免极端情况下把画面藏得太空。
+ * ## 三条约束保证"藏得对"，而不只是"藏得多"
+ *
+ * ### 1. 每个解方块至少保留 minVisiblePerCell 条可见线（推理链的关键）
+ * 纯按"可解性"贪心隐藏会藏出一种很糟的局面：某个区域三个轴的提示全被藏光，
+ * 玩家在那里**完成一整行也得不到任何新线索**——他推完横向，抬头发现纵向没有数字，
+ * 推理链就断在这里。约束每格至少有 2 条可见线之后，
+ * "推完一个轴 ⇒ 必然给另一个轴喂进信息"这件事在结构上被保证了。
+ *
+ * 下限只对**解方块**生效，这一点很重要：非解方块最终会被凿掉，
+ * 它那条线的数字会自动迁移到后面的方块表面上（见 HintFaces），
+ * 所以它并不构成"读不到数字"的死角。若把下限一视同仁地加到全部格子上，
+ * 可隐藏量会被砍掉一半，难度反而掉下来（实测 duck 3.65 → 3.19）。
+ * 空格另有一条更松的下限 minVisiblePerEmpty，避免整片空白区域完全无信息。
+ *
+ * ### 2. 方框提示（≥3 段）永不隐藏
+ * 方框是**最稀有也最有信息量**的提示，一个造型里往往只有个位数条。
+ * 随机裁剪很容易正好把它们藏掉，结果玩家整局看不到一个方框，
+ * 谜面读起来就只剩"数格子"。默认把它们全部保护起来。
+ *
+ * ### 3. 候选顺序按记号分组：先试裸数字，圆圈留到最后
+ * 裸数字（1 段）信息量最低、也最多，优先藏它们既能清干净画面，
+ * 又能把带记号的提示留在场上撑起阅读趣味。
+ * 组内用 seed 确定性打乱：隐藏分布看起来自然（不成条带），
+ * 同时同一关每次算出来完全一样，可复现、可 diff。
+ *
+ * 难度上限 `maxScore` 是"有挑战但不太难"的直接闸门：每次成功隐藏后重新评分，
+ * 一旦超过就撤回这一步。`maxHiddenRatio` 是安全兜底。
  *
  * 成本：每个候选一次传播。128 条线的关卡约 100ms 量级，
  * 因此这是**离线**步骤（tools/level-audit.mjs --prune），结果写进关卡 JSON，
@@ -400,8 +430,10 @@ export function analyzePuzzle(grid, solution, options = {}) {
  * @param {Uint8Array} solution
  * @param {import("./HintModel.js").HintSet} hints 会被**就地修改** visible 掩码
  * @param {{seed?:number|string, maxScore?:number, maxHiddenRatio?:number,
+ *          minVisiblePerCell?:number, minVisiblePerEmpty?:number, protectSquare?:boolean,
  *          keepVisible?:(axis:number,key:number)=>boolean}} [options]
  * @returns {{ok:boolean, hidden:number, tried:number, reverted:number,
+ *            blockedByCell:number, protectedMarks:number,
  *            reason:string, difficulty:object, summary:object}}
  */
 export function pruneHints(grid, solution, hints, options = {}) {
@@ -409,6 +441,9 @@ export function pruneHints(grid, solution, hints, options = {}) {
     seed = 1,
     maxScore = 4.0,
     maxHiddenRatio = 0.55,
+    minVisiblePerCell = 2,
+    minVisiblePerEmpty = 1,
+    protectSquare = true,
     keepVisible,
   } = options;
 
@@ -421,20 +456,56 @@ export function pruneHints(grid, solution, hints, options = {}) {
       hidden: hints.hiddenCount(),
       tried: 0,
       reverted: 0,
+      blockedByCell: 0,
+      protectedMarks: 0,
       reason: "裁剪前的谜面本身就需要猜测，未做任何隐藏",
       difficulty: rateDifficulty(grid, solution, hints, baseline),
       summary: hints.summary(),
     };
   }
 
-  const ids = new Array(table.totalLines);
-  for (let id = 0; id < table.totalLines; id++) ids[id] = id;
-  new Rng(seed).shuffle(ids);
+  // 每个格子当前有几条可见线（初值按传入的 visible 掩码算，支持增量裁剪）
+  const visiblePerCell = new Uint8Array(grid.count);
+  for (let cell = 0; cell < grid.count; cell++) {
+    let n = 0;
+    for (const axis of AXES) {
+      const id = table.cellLines[cell * 3 + axis];
+      if (hints.visible[table.axisOf[id]][table.keyOf[id]] === 1) n++;
+    }
+    visiblePerCell[cell] = n;
+  }
+
+  /** 藏掉这条线会不会让线上某个格子跌破下限 */
+  const violatesCellFloor = (id) => {
+    const start = table.starts[id];
+    const step = table.steps[id];
+    const len = table.lengths[id];
+    for (let i = 0; i < len; i++) {
+      const cell = start + i * step;
+      const floor = solution[cell] === 1 ? minVisiblePerCell : minVisiblePerEmpty;
+      if (visiblePerCell[cell] - 1 < floor) return true;
+    }
+    return false;
+  };
+
+  // 候选顺序：裸数字优先（信息量最低），圆圈最后；组内确定性打乱
+  const rng = new Rng(seed);
+  const byMark = [[], [], []];
+  for (let id = 0; id < table.totalLines; id++) {
+    byMark[hints.marks[table.axisOf[id]][table.keyOf[id]]].push(id);
+  }
+  for (const group of byMark) rng.shuffle(group);
+  const ids = [
+    ...byMark[MARK_PLAIN],
+    ...byMark[MARK_CIRCLE],
+    ...(protectSquare ? [] : byMark[MARK_SQUARE]),
+  ];
 
   const limit = Math.floor(table.totalLines * maxHiddenRatio);
   let hidden = hints.hiddenCount();
   let tried = 0;
   let reverted = 0;
+  let blockedByCell = 0;
   let lastGood = baseline;
   let cappedByScore = false;
 
@@ -444,6 +515,10 @@ export function pruneHints(grid, solution, hints, options = {}) {
     const key = table.keyOf[id];
     if (hints.visible[axis][key] === 0) continue;
     if (keepVisible && keepVisible(axis, key)) continue;
+    if (violatesCellFloor(id)) {
+      blockedByCell++;
+      continue;
+    }
 
     tried++;
     hints.visible[axis][key] = 0;
@@ -464,20 +539,37 @@ export function pruneHints(grid, solution, hints, options = {}) {
       continue;
     }
 
+    // 确认隐藏：更新每格的可见线计数
+    const start = table.starts[id];
+    const step = table.steps[id];
+    for (let i = 0; i < table.lengths[id]; i++) visiblePerCell[start + i * step]--;
     hidden++;
     lastGood = res;
   }
 
   const difficulty = rateDifficulty(grid, solution, hints, lastGood);
   const summary = hints.summary();
+  const protectedMarks = protectSquare ? byMark[MARK_SQUARE].length : 0;
   const reason =
     hidden >= limit
       ? `达到隐藏比例上限 ${Math.round(maxHiddenRatio * 100)}%`
       : cappedByScore
         ? `受难度上限 ${maxScore.toFixed(2)} 约束`
-        : "已隐藏全部冗余提示";
+        : blockedByCell > 0
+          ? `受"每个解方块至少 ${minVisiblePerCell} 条可见线"约束`
+          : "已隐藏全部冗余提示";
 
-  return { ok: true, hidden, tried, reverted, reason, difficulty, summary };
+  return {
+    ok: true,
+    hidden,
+    tried,
+    reverted,
+    blockedByCell,
+    protectedMarks,
+    reason,
+    difficulty,
+    summary,
+  };
 }
 
 /** 难度等级名（1..5） */

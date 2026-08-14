@@ -39,10 +39,27 @@ const genCount = genIndex >= 0 ? Number(args[genIndex + 1] ?? 10) : 0;
 const repairIndex = args.indexOf("--repair");
 const repairCount = repairIndex >= 0 ? Number(args[repairIndex + 1] ?? 10) : 0;
 
-/** 裁剪的难度上限：超过就停手，保证"有挑战但不太难" */
-const PRUNE_MAX_SCORE = 3.9;
+/**
+ * 裁剪的难度上限：超过就停手
+ *
+ * 这个值直接决定"最难的关能有多难"。之前定 3.9 偏保守——实测下来
+ * 玩家反馈推理深度不够，所以放到 4.6（`DIFFICULTY_LABELS` 里 5 = 硬核，
+ * 4.6 落在"有挑战"偏上），让 duck 这类大关能吃到更深的推理链。
+ */
+const PRUNE_MAX_SCORE = 4.6;
 /** 裁剪的隐藏比例上限：兜底，避免画面被藏得太空 */
 const PRUNE_MAX_RATIO = 0.5;
+/**
+ * 每个**解方块**至少要保留几条可见线（3 条里）
+ *
+ * 这是"推理链能不能接上"的结构性保证：只要每个会留下来的方块都有 ≥2 条可见线，
+ * 玩家推完一个轴，必然给另一个轴喂进新信息——不会出现
+ * "涂完一整行，抬头发现纵向一个数字都没有"的断链。
+ * 只约束解方块是因为非解方块会被凿掉，它那条线的数字会自动迁移到后面的方块上。
+ */
+const PRUNE_MIN_VISIBLE_PER_CELL = 2;
+/** 空格（会被凿掉）的可见线下限：更松，只是避免整片区域完全无信息 */
+const PRUNE_MIN_VISIBLE_PER_EMPTY = 1;
 
 if (genCount > 0) {
   smokeTestGenerator(genCount);
@@ -87,6 +104,9 @@ function pruneLevels() {
       seed: `prune:${id}`,
       maxScore: PRUNE_MAX_SCORE,
       maxHiddenRatio: PRUNE_MAX_RATIO,
+      minVisiblePerCell: PRUNE_MIN_VISIBLE_PER_CELL,
+      minVisiblePerEmpty: PRUNE_MIN_VISIBLE_PER_EMPTY,
+      protectSquare: true,
     });
     const ms = performance.now() - t0;
 
@@ -99,9 +119,10 @@ function pruneLevels() {
     console.log(
       `✓ ${id.padEnd(15)} 隐藏 ${String(result.hidden).padStart(3)}/${String(s.total).padEnd(3)} ` +
         `(${String(Math.round(s.hiddenRatio * 100)).padStart(2)}%)  ` +
-        `可见 数字${String(s.numbered).padStart(3)} 零${String(s.zero).padStart(3)}  ` +
+        `可见 裸${String(s.plain).padStart(3)} 圆${String(s.circle).padStart(2)} ` +
+        `方${String(s.square).padStart(2)} 零${String(s.zero).padStart(3)}  ` +
         `难度 ${result.difficulty.score.toFixed(2)}(${result.difficulty.label})  ` +
-        `${result.reason}  ${ms.toFixed(0)}ms`,
+        `波次 ${result.difficulty.metrics.waves}  ${result.reason}  ${ms.toFixed(0)}ms`,
     );
 
     raw.hiddenHints = hints.exportHidden();
@@ -117,8 +138,9 @@ function pruneLevels() {
   }
 
   console.log(
-    `\n难度上限 ${PRUNE_MAX_SCORE.toFixed(2)}、隐藏比例上限 ${Math.round(PRUNE_MAX_RATIO * 100)}%；` +
-      `结果已写入各关卡的 hiddenHints 字段`,
+    `\n难度上限 ${PRUNE_MAX_SCORE.toFixed(2)}、隐藏比例上限 ${Math.round(PRUNE_MAX_RATIO * 100)}%、` +
+      `每个解方块至少 ${PRUNE_MIN_VISIBLE_PER_CELL} 条可见线（空格 ${PRUNE_MIN_VISIBLE_PER_EMPTY}）、` +
+      `方框提示不隐藏；结果已写入各关卡的 hiddenHints 字段`,
   );
 }
 
