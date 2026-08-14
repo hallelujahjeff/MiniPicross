@@ -3,6 +3,7 @@ import { App } from "./App.js";
 import { LevelSelect } from "./ui/LevelSelect.js";
 import { listLevels } from "./level/LevelLoader.js";
 import { getCompletedLevels, markLevelCompleted } from "./ui/ProgressStore.js";
+import { BgmPlayer } from "./audio/BgmPlayer.js";
 
 /** 取不到挂载点时兜底创建，避免内嵌预览环境下容器缺失导致白屏 */
 function ensureContainer(selector, id) {
@@ -29,6 +30,7 @@ ensureContainer("#hud", "hud");
 const selectMount = ensureContainer("#select", "select");
 
 const app = new App(container);
+const bgm = new BgmPlayer();
 
 // ---------- 选关界面 ----------
 const levelSelect = new LevelSelect(selectMount, {
@@ -41,8 +43,26 @@ function refreshSelect(flashId) {
   levelSelect.setCompleted(getCompletedLevels(), flashId);
 }
 
+/** 当前场景："select" = 选关界面，"level" = 关卡内 */
+let scene = "select";
+/** 用户是否已经有过一次手势（BGM 是否已解锁开播） */
+let bgmUnlocked = false;
+
+/** 播放当前场景对应的 BGM */
+function playSceneBgm() {
+  if (!bgmUnlocked) return;
+  if (scene === "select") bgm.playSelect();
+  else bgm.playLevel();
+}
+
 /** 从选关界面进入关卡 */
 function enterLevel(id) {
+  scene = "level";
+  // 点卡片本身就是一个用户手势，直接解锁并切到关卡 BGM
+  bgmUnlocked = true;
+  bgm.unlock();
+  bgm.playLevel();
+
   levelSelect.hide();
   container.style.display = "block";
   app.show();
@@ -55,6 +75,9 @@ function enterLevel(id) {
 
 /** 从关卡界面退回选关 */
 function exitToSelect() {
+  scene = "select";
+  bgm.playSelect();
+
   app.hide();
   app.endVictory();
   container.style.display = "none";
@@ -62,6 +85,19 @@ function exitToSelect() {
   // 刚完成的关卡播放入场闪烁
   refreshSelect(app.currentLevelId);
 }
+
+// 首次手势：拉起 BGM（浏览器自动播放策略要求在用户手势里创建 AudioContext）。
+// 首次加载停在选关界面时是静音的，用户随便点一下，选关 BGM 就响了。
+window.addEventListener(
+  "pointerdown",
+  () => {
+    if (bgmUnlocked) return;
+    bgmUnlocked = true;
+    bgm.unlock();
+    playSceneBgm();
+  },
+  { once: true, passive: true },
+);
 
 // 通关回调：立即持久化进度（解锁下一关）
 app.onLevelSolved = (id) => {
@@ -90,6 +126,7 @@ app.onExitLevel = () => exitToSelect();
       window.__select = levelSelect;
       window.__enterLevel = enterLevel;
       window.__exitToSelect = exitToSelect;
+      window.__bgm = bgm;
     }
   } catch (err) {
     console.error("[main] 初始化失败", err);
@@ -102,5 +139,6 @@ if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     app.dispose();
     levelSelect.dispose();
+    bgm.dispose();
   });
 }
