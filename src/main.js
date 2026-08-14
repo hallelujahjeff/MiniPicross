@@ -86,17 +86,24 @@ function exitToSelect() {
   refreshSelect(app.currentLevelId);
 }
 
-// 首次手势：拉起 BGM（浏览器自动播放策略要求在用户手势里创建 AudioContext）。
-// 首次加载停在选关界面时是静音的，用户随便点一下，选关 BGM 就响了。
-window.addEventListener(
-  "pointerdown",
-  () => {
-    if (bgmUnlocked) return;
-    bgmUnlocked = true;
-    bgm.unlock();
-    playSceneBgm();
-  },
-  { once: true, passive: true },
+// 首次交互：拉起 BGM。
+// 浏览器自动播放策略要求 AudioContext 必须在**用户手势**里恢复，代码无法绕过
+// （这是所有浏览器的安全设计，YouTube 等也受同样限制）。
+// 因此这里监听尽可能多的"手势"事件——点击 / 按键 / 滚动 / 触摸，任何一个都算，
+// 让 BGM 在用户做第一个动作的瞬间就响起，尽量贴近"自动播放"的体验。
+const UNLOCK_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart"];
+
+function unlockBgm() {
+  if (bgmUnlocked) return;
+  bgmUnlocked = true;
+  bgm.unlock();
+  playSceneBgm();
+  UNLOCK_EVENTS.forEach((ev) =>
+    window.removeEventListener(ev, unlockBgm, { passive: true }),
+  );
+}
+UNLOCK_EVENTS.forEach((ev) =>
+  window.addEventListener(ev, unlockBgm, { passive: true }),
 );
 
 // 通关回调：立即持久化进度（解锁下一关）
