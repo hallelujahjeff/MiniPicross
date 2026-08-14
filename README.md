@@ -10,6 +10,18 @@ npm install
 npm run dev        # 打开 http://localhost:5173/
 ```
 
+## 部署到 GitHub Pages
+
+纯静态项目，通过 GitHub Actions 自动部署：
+
+1. 在仓库 **Settings → Pages** 里，把 Source 设为 **GitHub Actions**。
+2. 推送到 `main`（或点 Actions 里的 *Run workflow* 手动触发）。
+
+构建产物会自动发布到 `https://<用户名>.github.io/MiniPicross/`。
+子路径前缀由工作流里的 `BASE_PATH=/MiniPicross/` 注入（见
+`.github/workflows/deploy-pages.yml`）；本地 `npm run dev` / `npm run build`
+不受影响，默认仍是 `/`。
+
 ## 操作
 
 | 操作 | 行为 |
